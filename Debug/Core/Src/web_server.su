@@ -1,0 +1,6 @@
+../Core/Src/web_server.c:43:5:fs_open_custom	56	static
+../Core/Src/web_server.c:91:6:fs_close_custom	16	static
+../Core/Src/web_server.c:99:7:httpd_post_begin	24	static
+../Core/Src/web_server.c:109:7:httpd_post_receive_data	16	static
+../Core/Src/web_server.c:119:6:httpd_post_finished	24	static
+../Core/Src/web_server.c:128:6:httpd_cgi_handler	24	static

@@ -1,0 +1,5 @@
+../Core/Src/DB_Parameters.c:165:17:Calculate_Buffer_CRC	1
+../Core/Src/DB_Parameters.c:174:6:DB_UpdateCRC	1
+../Core/Src/DB_Parameters.c:178:6:DB_CheckCRC	1
+../Core/Src/DB_Parameters.c:183:6:DB_SaveToFlash	4
+../Core/Src/DB_Parameters.c:225:6:DB_ReadFromFlash	2
