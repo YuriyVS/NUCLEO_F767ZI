@@ -1,6 +1,7 @@
-../Core/Src/web_server.c:43:5:fs_open_custom	56	static
-../Core/Src/web_server.c:91:6:fs_close_custom	16	static
-../Core/Src/web_server.c:99:7:httpd_post_begin	24	static
-../Core/Src/web_server.c:109:7:httpd_post_receive_data	16	static
-../Core/Src/web_server.c:119:6:httpd_post_finished	24	static
-../Core/Src/web_server.c:128:6:httpd_cgi_handler	24	static
+../Core/Src/web_server.c:214:5:fs_open_custom	72	static
+../Core/Src/web_server.c:313:6:fs_close_custom	16	static
+../Core/Src/web_server.c:321:7:httpd_post_begin	24	static
+../Core/Src/web_server.c:335:7:httpd_post_receive_data	24	static
+../Core/Src/web_server.c:348:6:httpd_post_finished	32	static
+../Core/Src/web_server.c:375:6:httpd_cgi_handler	24	static
+../Core/Src/web_server.c:381:6:Process_Alarm_Log	24	static

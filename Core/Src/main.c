@@ -239,6 +239,8 @@ int main(void)
 	    	  	  DB_ReadFromFlash();
 	      	      DBMain.b96.Read_from_Flash = false;
 	      }
+
+	      Process_Alarm_Log();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
