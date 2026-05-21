@@ -52,14 +52,18 @@ CAN_HandleTypeDef hcan1;
 CRC_HandleTypeDef hcrc;
 
 UART_HandleTypeDef huart3;
+UART_HandleTypeDef huart6;
 DMA_HandleTypeDef hdma_usart3_rx;
+DMA_HandleTypeDef hdma_usart6_rx;
 
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
 extern UART_HandleTypeDef huart3; // Кажемо компілятору: "huart3 оголошена десь в іншому місці"
+extern UART_HandleTypeDef huart6; // Кажемо компілятору: "huart3 оголошена десь в іншому місці"
 uint16_t Modbus_Registers[10] = {0}; // Наші Holding Registers
 uint8_t RTU_Rx_Buf[256];             // Буфер для прийому по UART
+uint8_t rx_buf_usart6[256];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -70,10 +74,12 @@ static void MX_USART3_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_CAN1_Init(void);
 static void MX_CRC_Init(void);
+static void MX_USART6_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void MPU_Config(void);
 uint16_t Modbus_CRC16(uint8_t *buffer, uint16_t length);
-void Modbus_RTU_Parse(uint8_t *rx_data, uint16_t length);
+//void Modbus_RTU_Parse(uint8_t *rx_data, uint16_t length);
+void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t length);
 void CAN1_Init_User(void);
 
 
@@ -143,6 +149,7 @@ int main(void)
   MX_LWIP_Init();
   MX_CAN1_Init();
   MX_CRC_Init();
+  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
   CAN1_Init_User();
   ModbusTCP_Init();
@@ -152,6 +159,8 @@ int main(void)
   // Запуск прийому по UART3 з використанням DMA та визначенням паузи (Idle Line)
   HAL_UARTEx_ReceiveToIdle_DMA(&huart3, RTU_Rx_Buf, 256);
   __HAL_DMA_DISABLE_IT(&hdma_usart3_rx, DMA_IT_HT); // Вимикаємо переривання Half Transfer
+  // Запуск для ESP32-C3
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart6, rx_buf_usart6, sizeof(rx_buf_usart6));
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -443,6 +452,41 @@ static void MX_USART3_UART_Init(void)
 }
 
 /**
+  * @brief USART6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART6_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART6_Init 0 */
+
+  /* USER CODE END USART6_Init 0 */
+
+  /* USER CODE BEGIN USART6_Init 1 */
+
+  /* USER CODE END USART6_Init 1 */
+  huart6.Instance = USART6;
+  huart6.Init.BaudRate = 115200;
+  huart6.Init.WordLength = UART_WORDLENGTH_8B;
+  huart6.Init.StopBits = UART_STOPBITS_1;
+  huart6.Init.Parity = UART_PARITY_NONE;
+  huart6.Init.Mode = UART_MODE_TX_RX;
+  huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart6.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart6.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart6.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART6_Init 2 */
+
+  /* USER CODE END USART6_Init 2 */
+
+}
+
+/**
   * @brief USB_OTG_FS Initialization Function
   * @param None
   * @retval None
@@ -485,11 +529,15 @@ static void MX_DMA_Init(void)
 
   /* DMA controller clock enable */
   __HAL_RCC_DMA1_CLK_ENABLE();
+  __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
   /* DMA1_Stream1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
+  /* DMA2_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
 
 }
 
@@ -671,7 +719,7 @@ uint16_t Modbus_CRC16(uint8_t *buffer, uint16_t length) {
 //    }
 //}
 
-void Modbus_RTU_Parse(uint8_t *rx_data, uint16_t length) {
+void Modbus_RTU_Parse(UART_HandleTypeDef *huart,uint8_t *rx_data, uint16_t length) {
     if (length < 8) return;
 
     // Проверка CRC и Slave ID (1)
@@ -726,15 +774,121 @@ void Modbus_RTU_Parse(uint8_t *rx_data, uint16_t length) {
         uint16_t res_crc = Modbus_CRC16(tx_buf, tx_len);
         tx_buf[tx_len++] = res_crc & 0xFF;
         tx_buf[tx_len++] = (res_crc >> 8) & 0xFF;
-        HAL_UART_Transmit(&huart3, tx_buf, tx_len, 100);
+        HAL_UART_Transmit(huart, tx_buf, tx_len, 100);
     }
 }
+
+//void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t length) {
+//    if (length < 8) return;
+//
+//    // Проверка CRC и Slave ID (1)
+//    if (Modbus_CRC16(rx_data, length - 2) != ((rx_data[length-1] << 8) | rx_data[length-2])) return;
+//    if (rx_data[0] != 1) return;
+//
+//    uint8_t f_code = rx_data[1];
+//    uint16_t start_addr = (rx_data[2] << 8) | rx_data[3];
+//    uint16_t reg_count = (rx_data[4] << 8) | rx_data[5];
+//
+//    uint8_t tx_buf[256];
+//    uint16_t tx_len = 0;
+//    uint16_t *base_ptr = NULL;
+//
+//    // Выбор базы данных
+//    if (start_addr < 1000) {
+//        base_ptr = (uint16_t *)&DBParameters;
+//    } else if (start_addr >= 1000 && start_addr < 2000) {
+//        base_ptr = (uint16_t *)&DBMain;
+//        start_addr -= 1000;
+//    }
+//    else if (start_addr >= 2000) {
+//        base_ptr = (uint16_t *)&DBSled;
+//        start_addr -= 2000; // Регистрация с 2000 -> индекс 0 в DBSled
+//    }
+//
+//    // --- Функция 03: Чтение ---
+//    if (f_code == 0x03) {
+//        tx_buf[0] = 1; tx_buf[1] = 0x03; tx_buf[2] = reg_count * 2;
+//        for (int i = 0; i < reg_count; i++) {
+//            uint16_t val = base_ptr[start_addr + i];
+//            tx_buf[3 + i*2] = (val >> 8) & 0xFF;
+//            tx_buf[4 + i*2] = val & 0xFF;
+//        }
+//        tx_len = 3 + (reg_count * 2);
+//    }
+//    // --- Функция 16 (0x10): Запись нескольких регистров ---
+//    // Weintek шлет именно её для 32-битных данных
+//    else if (f_code == 0x10) {
+//        for (int i = 0; i < reg_count; i++) {
+//            base_ptr[start_addr + i] = (rx_data[7 + i*2] << 8) | rx_data[8 + i*2];
+//        }
+//
+//        // Если писали в параметры — обновляем CRC и сохраняем
+//        if (base_ptr == (uint16_t *)&DBParameters) {
+//            DB_UpdateCRC();
+//            // DB_SaveToFlash(); // Опционально: сохранять сразу или по кнопке
+//        }
+//
+//        // Обработка триггера для архива
+//                if (base_ptr == (uint16_t *)&DBSled) {
+//                    // Если записан Archive_Cmd (смещение 2 в словах от начала структуры)
+//                    if (start_addr <= 2 && (start_addr + reg_count) > 2) {
+//                        if (DBSled.Archive_Cmd == 1) {
+//                            uint32_t addr = ADDR_ARCHIVE + (DBSled.Archive_Point_Idx * LOG_RECORD_SIZE);
+//
+//                            // Синхронное чтение из FRAM в окно Modbus
+//                            FRAM_Read_Data_Polling(addr, (uint8_t*)&DBSled.Archive_Window, LOG_RECORD_SIZE);
+//
+//                            DBSled.Archive_Cmd = 0; // Сброс команды (подтверждение для ПК)
+//                        }
+//                    }
+//                }
+//
+//        memcpy(tx_buf, rx_data, 6);
+//        tx_len = 6;
+//    }
+//
+//    // Отправка ответа
+//    if (tx_len > 0) {
+//        uint16_t res_crc = Modbus_CRC16(tx_buf, tx_len);
+//        tx_buf[tx_len++] = res_crc & 0xFF;
+//        tx_buf[tx_len++] = (res_crc >> 8) & 0xFF;
+//        HAL_UART_Transmit(huart, tx_buf, tx_len, 100);
+//    }
+//}
 
 // Колбек, який спрацьовує, коли пакет в UART закінчився
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
     if (huart->Instance == USART3) {
-        Modbus_RTU_Parse(RTU_Rx_Buf, Size);
-        HAL_UARTEx_ReceiveToIdle_DMA(&huart3, RTU_Rx_Buf, 256); // Перезапуск
+        Modbus_RTU_Parse(huart, RTU_Rx_Buf, Size);
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart3, RTU_Rx_Buf, sizeof(RTU_Rx_Buf)); // Перезапуск
+    }
+    else if (huart->Instance == USART6) {
+                // Данные от ESP32-C3
+                Modbus_RTU_Parse(huart, rx_buf_usart6, Size);
+                HAL_UARTEx_ReceiveToIdle_DMA(&huart6, rx_buf_usart6, sizeof(rx_buf_usart6));
+        }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
+	if (huart->Instance == USART3) {
+	        // Очищаем флаги ошибок, если нужно (хотя HAL делает это внутри)
+	        // Но самое важное — перезапустить прием
+
+	        // Опционально: можно добавить лог для отладки
+	        // printf("UART6 Error! Code: %ld\n", huart->ErrorCode);
+
+	        // Перезапускаем прием
+	        HAL_UARTEx_ReceiveToIdle_DMA(&huart3, RTU_Rx_Buf, sizeof(RTU_Rx_Buf)); // Перезапуск
+	    }
+	else if (huart->Instance == USART6) {
+        // Очищаем флаги ошибок, если нужно (хотя HAL делает это внутри)
+        // Но самое важное — перезапустить прием
+
+        // Опционально: можно добавить лог для отладки
+        // printf("UART6 Error! Code: %ld\n", huart->ErrorCode);
+
+        // Перезапускаем прием
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart6, rx_buf_usart6, sizeof(rx_buf_usart6));
     }
 }
 
