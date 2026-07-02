@@ -1,0 +1,11 @@
+../Drivers/CMSIS/Include/core_cm7.h:1896:22:__NVIC_EnableIRQ	2
+../Drivers/CMSIS/Include/core_cm7.h:2024:22:__NVIC_SetPriority	2
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_gpio.h:771:26:LL_GPIO_ReadInputPort	1
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_gpio.h:800:26:LL_GPIO_IsInputPinSet	1
+../Core/Src/DI_Block.c:15:6:Read_DI_Input	1
+../Core/Src/DI_Block.c:40:6:Read_DI_Input_Filtered	5
+../Core/Src/DI_Block.c:73:6:DI_XOR	1
+../Core/Src/DI_Block.c:93:6:Interrupt_PE012_Init	1
+../Core/Src/DI_Block.c:112:6:Process_Frequency_Input	2
+../Core/Src/DI_Block.c:139:6:Update_Calculated_Frequency	6
+../Core/Src/DI_Block.c:165:6:Init_FreqChannels	2

@@ -27,6 +27,9 @@
 #include <stdio.h>
 #include "DB_Parameters.h"
 #include "DB_Main.h"
+#include "DB_Constants.h"
+#include "DI_Block.h"
+#include "AI_Normalisation.h"
 #include "lwip/apps/httpd.h" // Обязательно для httpd_init()
 #include "web_server.h"
 /* USER CODE END Includes */
@@ -47,6 +50,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+
 CAN_HandleTypeDef hcan1;
 
 CRC_HandleTypeDef hcrc;
@@ -64,6 +68,15 @@ extern UART_HandleTypeDef huart6; // Кажемо компілятору: "huart
 uint16_t Modbus_Registers[10] = {0}; // Наші Holding Registers
 uint8_t RTU_Rx_Buf[256];             // Буфер для прийому по UART
 uint8_t rx_buf_usart6[256];
+uint32_t DI_Timer = 0; // Переменная для хранения времени последнего опроса входов
+bool filterDI = 1;
+
+#define ADC_CHANNELS_COUNT 6
+volatile uint16_t aADCxConvertedData[ADC_CHANNELS_COUNT] __attribute__((section(".dtcm_data")));
+
+volatile uint32_t ADC_Accumulator[ADC_CHANNELS_COUNT] = {0};
+volatile uint32_t ADC_SamplesCount = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -75,12 +88,17 @@ static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_CAN1_Init(void);
 static void MX_CRC_Init(void);
 static void MX_USART6_UART_Init(void);
+static void MX_ADC1_Init(void);
+static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 void MPU_Config(void);
 uint16_t Modbus_CRC16(uint8_t *buffer, uint16_t length);
 //void Modbus_RTU_Parse(uint8_t *rx_data, uint16_t length);
 void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t length);
 void CAN1_Init_User(void);
+
+static void MX_DMA_ADC_Init(void);
+static void MX_TIM2_Init(void);
 
 
 /* USER CODE END PFP */
@@ -150,7 +168,14 @@ int main(void)
   MX_CAN1_Init();
   MX_CRC_Init();
   MX_USART6_UART_Init();
+  MX_ADC1_Init();
+  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
+  MX_DMA_ADC_Init();  // 1. Сначала тактируем и взводим DMA
+//  MX_ADC1_Init();     // 2. Настраиваем АЦП (он связывается с DMA)
+  MX_TIM2_Init();     // 3. Последним запускаем таймер-метроном
+
+  Interrupt_PE012_Init();
   CAN1_Init_User();
   ModbusTCP_Init();
   // ЗАПУСК ВЕБ-СЕРВЕРА - проверьте наличие этой строки!
@@ -204,10 +229,26 @@ int main(void)
   DBParameters = DBParametersFactory;
   DBMain.b96.Save_to_Flash = 0;
   DBMain.b96.Read_from_Flash = 0;
+  Init_FreqChannels();
+  uint32_t last_tick_ai = 0, new_tick_ai= 0;
+  float dt_ai = 0.0033f; // Расчет каждые 3.3 мс
+  DI_Timer = HAL_GetTick();
   while (1)
   {
-
-	  // 1. ГОЛОВНЕ: Обробка мережевого стека LwIP.
+	      if(filterDI){
+	    	  if (HAL_GetTick() - DI_Timer >= 1) {
+	    	  	      DI_Timer +=1;//DI_Timer = HAL_GetTick();
+	    	          Read_DI_Input_Filtered(); // Выполняется в основном потоке раз в 1 мс
+	    	          DI_XOR();
+	    	          Update_Calculated_Frequency();
+	    	  }
+	  	  }
+	  	  else{
+	  		  Read_DI_Input();
+	  		  DI_XOR();
+	  		Update_Calculated_Frequency();
+	  	  }
+	      // 1. ГОЛОВНЕ: Обробка мережевого стека LwIP.
 	      // Без цієї функції Modbus TCP не буде відповідати!
 	      MX_LWIP_Process();
 
@@ -250,6 +291,62 @@ int main(void)
 	      }
 
 	      Process_Alarm_Log();
+
+		  //Аналогові входи. Например, расчет каждые 3.3 мс
+//	      new_tick_ai = HAL_GetTick();
+//	      if (new_tick_ai - last_tick_ai >= (uint32_t)(dt_ai * 1000))
+//	      {
+//	    	  last_tick_ai = new_tick_ai;
+	      // Вместо HAL_GetTick() проверяем глобальный счетчик, который инкрементируется в прерывании DMA
+	      if (samples_count >= 44) // 44 выборки * 75 мкс = ровно 3.3 мс
+	      {
+		          // Отключаем прерывания на момент копирования, чтобы данные не изменились
+		          __disable_irq();
+		          for(int i=0; i<6; i++) {
+		        	  AI_Channels[i].RawSum = raw_sum[i];
+		        	  AI_Channels[i].SamplesCount = samples_count;
+		        	  raw_sum[i] = 0; // Сбрасываем для нового цикла накопления
+		          }
+		          samples_count = 0;
+		          __enable_irq();
+
+		          // 1. Напруга в мережі (Useti)
+		          Process_AI(&AI_Channels[0], DBParameters.f50.P20_1, DBParameters.f50.P20_2,
+		                             DBParameters.f50.P20_3, DBParameters.f50.P21_2, dt_ai);
+		          DBMain.f50.UsetiV = AI_Channels[0].FilteredVal;
+		          DBMain.f50.Useti = AI_Channels[0].PhysicalPct;
+
+		          // 2. Струм AKB (Iakb)
+		          Process_AI(&AI_Channels[3], DBParameters.f50.P20_4, DBParameters.f50.P20_5,
+		                             DBParameters.f50.P20_6, DBParameters.f50.P21_5, dt_ai);
+		          DBMain.f50.IakbA = AI_Channels[3].FilteredVal;
+		          DBMain.f50.Iakb = AI_Channels[3].PhysicalPct;
+
+		          // 3. Резерв 1 (Rezerv1)
+		          Process_AI(&AI_Channels[4], DBParameters.f50.P20_7, DBParameters.f50.P20_8,
+		                             DBParameters.f50.P20_9, DBParameters.f50.P21_8, dt_ai);
+		          DBMain.f50.Rezerv1U = AI_Channels[4].FilteredVal;
+		          DBMain.f50.Rezerv1 = AI_Channels[4].PhysicalPct;
+
+
+
+	//	          if (samples > 0) {
+	//	              // Среднее значение канала 0 (Напряжение сети)
+	//	              float Useti_AI = (float)sum[0] / samples;
+	//	              float Iakb_AI = (float)sum[1] / samples;
+	//	              float Rezerv1_AI = (float)sum[2] / samples;
+	//	              float Rezerv2_AI = (float)sum[3] / samples;
+	//	              float Rezerv3_AI = (float)sum[4] / samples;
+	//	              float Rezerv4_AI = (float)sum[5] / samples;
+	//
+	//	              // Теперь подставляем в формулу из вашего DOC-файла:
+	//	              // UsetiV = P20.1 * Useti_AI + P20.2;
+	//	              //float UsetiV = DBParameters.f50.P20_1 * Useti_AI + DBParameters.f50.P20_2;
+	//	              //DBMain.f50.Useti = UsetiV * 100.0f / DBParameters.f50.P20_3;
+	//	          }
+		      }
+
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -349,6 +446,127 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  LL_ADC_InitTypeDef ADC_InitStruct = {0};
+  LL_ADC_REG_InitTypeDef ADC_REG_InitStruct = {0};
+  LL_ADC_CommonInitTypeDef ADC_CommonInitStruct = {0};
+
+  LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /* Peripheral clock enable */
+  LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_ADC1);
+
+  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOC);
+  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
+  /**ADC1 GPIO Configuration
+  PC0   ------> ADC1_IN10
+  PA0/WKUP   ------> ADC1_IN0
+  PA3   ------> ADC1_IN3
+  */
+  GPIO_InitStruct.Pin = AI5_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(AI5_GPIO_Port, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = AI1_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(AI1_GPIO_Port, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = AI4_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(AI4_GPIO_Port, &GPIO_InitStruct);
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+
+  /** Common config
+  */
+  ADC_InitStruct.Resolution = LL_ADC_RESOLUTION_12B;
+  ADC_InitStruct.DataAlignment = LL_ADC_DATA_ALIGN_RIGHT;
+  ADC_InitStruct.SequencersScanMode = LL_ADC_SEQ_SCAN_DISABLE;
+  LL_ADC_Init(ADC1, &ADC_InitStruct);
+  ADC_REG_InitStruct.TriggerSource = LL_ADC_REG_TRIG_SOFTWARE;
+  ADC_REG_InitStruct.SequencerLength = LL_ADC_REG_SEQ_SCAN_DISABLE;
+  ADC_REG_InitStruct.SequencerDiscont = LL_ADC_REG_SEQ_DISCONT_DISABLE;
+  ADC_REG_InitStruct.ContinuousMode = LL_ADC_REG_CONV_SINGLE;
+  ADC_REG_InitStruct.DMATransfer = LL_ADC_REG_DMA_TRANSFER_NONE;
+  LL_ADC_REG_Init(ADC1, &ADC_REG_InitStruct);
+  LL_ADC_REG_SetFlagEndOfConversion(ADC1, LL_ADC_REG_FLAG_EOC_UNITARY_CONV);
+  ADC_CommonInitStruct.CommonClock = LL_ADC_CLOCK_SYNC_PCLK_DIV4;
+  ADC_CommonInitStruct.Multimode = LL_ADC_MULTI_INDEPENDENT;
+  LL_ADC_CommonInit(__LL_ADC_COMMON_INSTANCE(ADC1), &ADC_CommonInitStruct);
+
+  /** Configure Regular Channel
+  */
+  LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_0);
+  LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_0, LL_ADC_SAMPLINGTIME_3CYCLES);
+  /* USER CODE BEGIN ADC1_Init 2 */
+    // 1. Перенастраиваем регулярную группу (Триггер TIM2 + DMA + 6 канала)
+    ADC_REG_InitStruct.TriggerSource    = LL_ADC_REG_TRIG_EXT_TIM2_TRGO;
+    ADC_REG_InitStruct.SequencerLength  = LL_ADC_REG_SEQ_SCAN_ENABLE_6RANKS;
+    ADC_REG_InitStruct.ContinuousMode   = LL_ADC_REG_CONV_SINGLE;
+    ADC_REG_InitStruct.DMATransfer      = LL_ADC_REG_DMA_TRANSFER_UNLIMITED;
+    LL_ADC_REG_Init(ADC1, &ADC_REG_InitStruct);
+
+    // 2. Включаем скан-режим (CubeIDE мог его выключить выше)
+    LL_ADC_SetSequencersScanMode(ADC1, LL_ADC_SEQ_SCAN_ENABLE);
+
+    // 3. Устанавливаем фронт триггера (RISING EDGE) через регистр CR2
+    // Это заменяет неисправную функцию LL_ADC_REG_SetTriggerEdge
+    MODIFY_REG(ADC1->CR2, ADC_CR2_EXTEN, LL_ADC_REG_TRIG_EXT_RISING);
+
+    // 4. Настраиваем последовательность каналов AI1-AI6
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_0);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_0);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_0);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_4, LL_ADC_CHANNEL_3);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_5, LL_ADC_CHANNEL_10);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_6, LL_ADC_CHANNEL_10);
+
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_0);
+//    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_1);
+//    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_2);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_0);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_0);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_4, LL_ADC_CHANNEL_3);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_5, LL_ADC_CHANNEL_10);
+//    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_6, LL_ADC_CHANNEL_11);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_6, LL_ADC_CHANNEL_10);
+
+    // 5. Устанавливаем время выборки (15 циклов для всех каналов)
+    uint32_t smp = LL_ADC_SAMPLINGTIME_15CYCLES;
+
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_0, smp);
+//    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_1, smp);
+//    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_2, smp);
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_3, smp);
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_10, smp);
+//    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_11, smp);
+
+    // 6. Устанавливаем флаг окончания всей последовательности (для DMA)
+    LL_ADC_REG_SetFlagEndOfConversion(ADC1, LL_ADC_REG_FLAG_EOC_SEQUENCE_CONV);
+
+    // 7. Включаем АЦП
+    LL_ADC_Enable(ADC1);
+
+  /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
   * @brief CAN1 Initialization Function
   * @param None
   * @retval None
@@ -413,6 +631,39 @@ static void MX_CRC_Init(void)
   /* USER CODE BEGIN CRC_Init 2 */
 
   /* USER CODE END CRC_Init 2 */
+
+}
+
+/**
+  * @brief TIM7 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM7_Init(void)
+{
+
+  /* USER CODE BEGIN TIM7_Init 0 */
+
+  /* USER CODE END TIM7_Init 0 */
+
+  LL_TIM_InitTypeDef TIM_InitStruct = {0};
+
+  /* Peripheral clock enable */
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM7);
+
+  /* USER CODE BEGIN TIM7_Init 1 */
+
+  /* USER CODE END TIM7_Init 1 */
+  TIM_InitStruct.Prescaler = 0;
+  TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
+  TIM_InitStruct.Autoreload = 65535;
+  LL_TIM_Init(TIM7, &TIM_InitStruct);
+  LL_TIM_DisableARRPreload(TIM7);
+  LL_TIM_SetTriggerOutput(TIM7, LL_TIM_TRGO_RESET);
+  LL_TIM_DisableMasterSlaveMode(TIM7);
+  /* USER CODE BEGIN TIM7_Init 2 */
+
+  /* USER CODE END TIM7_Init 2 */
 
 }
 
@@ -555,7 +806,9 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOE);
   LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOC);
+  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOF);
   LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOH);
   LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
   LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
@@ -575,7 +828,23 @@ static void MX_GPIO_Init(void)
   LL_GPIO_ResetOutputPin(LD2_GPIO_Port, LD2_Pin);
 
   /**/
+  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTE, LL_SYSCFG_EXTI_LINE2);
+
+  /**/
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTC, LL_SYSCFG_EXTI_LINE13);
+
+  /**/
+  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTE, LL_SYSCFG_EXTI_LINE0);
+
+  /**/
+  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTE, LL_SYSCFG_EXTI_LINE1);
+
+  /**/
+  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_2;
+  EXTI_InitStruct.LineCommand = ENABLE;
+  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
+  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
+  LL_EXTI_Init(&EXTI_InitStruct);
 
   /**/
   EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_13;
@@ -585,10 +854,108 @@ static void MX_GPIO_Init(void)
   LL_EXTI_Init(&EXTI_InitStruct);
 
   /**/
+  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_0;
+  EXTI_InitStruct.LineCommand = ENABLE;
+  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
+  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
+  LL_EXTI_Init(&EXTI_InitStruct);
+
+  /**/
+  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_1;
+  EXTI_InitStruct.LineCommand = ENABLE;
+  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
+  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
+  LL_EXTI_Init(&EXTI_InitStruct);
+
+  /**/
+  LL_GPIO_SetPinPull(DI_CountImpuls3_GPIO_Port, DI_CountImpuls3_Pin, LL_GPIO_PULL_NO);
+
+  /**/
   LL_GPIO_SetPinPull(USER_Btn_GPIO_Port, USER_Btn_Pin, LL_GPIO_PULL_NO);
 
   /**/
+  LL_GPIO_SetPinPull(DI_CountImpuls1_GPIO_Port, DI_CountImpuls1_Pin, LL_GPIO_PULL_NO);
+
+  /**/
+  LL_GPIO_SetPinPull(DI_CountImpuls2_GPIO_Port, DI_CountImpuls2_Pin, LL_GPIO_PULL_NO);
+
+  /**/
+  LL_GPIO_SetPinMode(DI_CountImpuls3_GPIO_Port, DI_CountImpuls3_Pin, LL_GPIO_MODE_INPUT);
+
+  /**/
   LL_GPIO_SetPinMode(USER_Btn_GPIO_Port, USER_Btn_Pin, LL_GPIO_MODE_INPUT);
+
+  /**/
+  LL_GPIO_SetPinMode(DI_CountImpuls1_GPIO_Port, DI_CountImpuls1_Pin, LL_GPIO_MODE_INPUT);
+
+  /**/
+  LL_GPIO_SetPinMode(DI_CountImpuls2_GPIO_Port, DI_CountImpuls2_Pin, LL_GPIO_MODE_INPUT);
+
+  /**/
+  GPIO_InitStruct.Pin = DI1_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(DI1_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI2_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(DI2_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI3_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(DI3_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI4_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(DI4_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI5_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(DI5_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI6_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(DI6_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI7_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(DI7_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI8_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(DI8_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI9_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(DI9_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI10_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(DI10_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI11_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(DI11_GPIO_Port, &GPIO_InitStruct);
 
   /**/
   GPIO_InitStruct.Pin = LD1_Pin;
@@ -597,6 +964,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(LD1_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI12_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(DI12_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DI13_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_DOWN;
+  LL_GPIO_Init(DI13_GPIO_Port, &GPIO_InitStruct);
 
   /**/
   GPIO_InitStruct.Pin = LD3_Pin;
@@ -1063,6 +1442,51 @@ void ModbusTCP_Init(void) {
     tcp_bind(pcb, IP_ADDR_ANY, 502); // Слухаємо 502 порт
     pcb = tcp_listen(pcb);
     tcp_accept(pcb, modbus_accept_callback);
+}
+
+static void MX_DMA_ADC_Init(void)
+{
+  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA2);
+
+  LL_DMA_ConfigTransfer(DMA2, LL_DMA_STREAM_0,
+                        LL_DMA_DIRECTION_PERIPH_TO_MEMORY |
+                        LL_DMA_PRIORITY_HIGH              |
+                        LL_DMA_MODE_CIRCULAR              |
+                        LL_DMA_PERIPH_NOINCREMENT         |
+                        LL_DMA_MEMORY_INCREMENT           |
+                        LL_DMA_PDATAALIGN_HALFWORD        |
+                        LL_DMA_MDATAALIGN_HALFWORD);
+
+  LL_DMA_ConfigAddresses(DMA2, LL_DMA_STREAM_0,
+                         LL_ADC_DMA_GetRegAddr(ADC1, LL_ADC_DMA_REG_REGULAR_DATA),
+                         (uint32_t)aADCxConvertedData,
+                         LL_DMA_DIRECTION_PERIPH_TO_MEMORY);
+
+  LL_DMA_SetDataLength(DMA2, LL_DMA_STREAM_0, ADC_CHANNELS_COUNT);
+  LL_DMA_SetChannelSelection(DMA2, LL_DMA_STREAM_0, LL_DMA_CHANNEL_0);
+
+  // РАЗРЕШАЕМ ПРЕРЫВАНИЕ ПО ЗАВЕРШЕНИЮ (Transfer Complete)
+  LL_DMA_EnableIT_TC(DMA2, LL_DMA_STREAM_0);
+
+  // Настройка приоритета в NVIC
+  NVIC_SetPriority(DMA2_Stream0_IRQn, 0);
+  NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+
+  LL_DMA_EnableStream(DMA2, LL_DMA_STREAM_0);
+}
+
+static void MX_TIM2_Init(void)
+{
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2);
+
+  LL_TIM_SetPrescaler(TIM2, 0);
+  LL_TIM_SetAutoReload(TIM2, 7199); // 15 kHz @ 108MHz
+  LL_TIM_SetCounterMode(TIM2, LL_TIM_COUNTERMODE_UP);
+
+  // Настройка Master Mode для генерации TRGO на событие Update
+  LL_TIM_SetTriggerOutput(TIM2, LL_TIM_TRGO_UPDATE);
+
+  LL_TIM_EnableCounter(TIM2);
 }
 
 

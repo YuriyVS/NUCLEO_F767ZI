@@ -22,6 +22,8 @@
 #include "stm32f7xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "DI_Block.h"
+#include "AI_Normalisation.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,7 +43,9 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-
+extern uint16_t aADCxConvertedData[];
+extern uint32_t ADC_Accumulator[];
+extern uint32_t ADC_SamplesCount;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -288,5 +292,63 @@ void USART6_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+/**
+  * @brief Обработка внешних прерываний EXTI 0, 1, 2
+  */
+void EXTI0_IRQHandler(void)
+{
+  if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_0) != RESET)
+  {
+    LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_0);
+    Process_Frequency_Input(0);
+  }
+}
+
+void EXTI1_IRQHandler(void)
+{
+  if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_1) != RESET)
+  {
+    LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_1);
+    Process_Frequency_Input(1);
+  }
+}
+
+void EXTI2_IRQHandler(void)
+{
+  if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_2) != RESET)
+  {
+    LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_2);
+    Process_Frequency_Input(2);
+  }
+}
+
+// Этот обработчик вызывается при прерываниях на пинах с 10 по 15
+void EXTI15_10_IRQHandler(void)
+{
+  // Проверяем, что прерывание пришло именно от 13-го пина (нашей кнопки)
+  if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_13) != RESET)
+  {
+    LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_13); // Очищаем флаг
+
+    // Вызываем ваш рабочий обработчик для Канала 0 (который раньше висел на PE0)
+    Process_Frequency_Input(0);
+  }
+}
+
+void DMA2_Stream0_IRQHandler(void)
+{
+  /* Проверяем флаг завершения передачи Stream 0 */
+  if (LL_DMA_IsActiveFlag_TC0(DMA2))
+  {
+    LL_DMA_ClearFlag_TC0(DMA2); // Сбрасываем флаг
+
+    /* ИНТЕГРИРУЮЩИЙ МЕТОД: Накапливаем сумму по каждому каналу */
+//    for (int i = 0; i < 6; i++) {
+//      ADC_Accumulator[i] += aADCxConvertedData[i];
+//    }
+//    ADC_SamplesCount++; // Считаем количество выборок
+    AI_Accumulate(aADCxConvertedData);
+  }
+}
 
 /* USER CODE END 1 */

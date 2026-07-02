@@ -15,6 +15,10 @@ const DB_Main DBMainInit ={
 		.f50.Rezerv4U = 0.0f,
 		.f50.Rezerv3 = 0.0f,
 		.f50.GenFreq = 0.0f,
-		.f50.GenFreqHz = 0.0f
+		.f50.GenFreqHz = 0.0f,
+		.f50.FreqGenABHz = 0.0f,
+		.f50.FreqGenBCHz = 0.0f,
+		.f50.FreqGenCAHz = 0.0f,
+		.f50.SpeedCar = 0.0f
 
 };

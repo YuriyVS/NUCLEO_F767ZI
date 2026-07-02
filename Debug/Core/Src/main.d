@@ -32,6 +32,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_usb.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd_ex.h \
+ ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_adc.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_rcc.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_bus.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_system.h \
@@ -40,6 +41,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_utils.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_pwr.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_dma.h \
+ ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_gpio.h \
  ../LWIP/App/lwip.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/opt.h \
@@ -81,6 +83,9 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/icmp.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/icmp.h \
  ../Core/Inc/DB_Parameters.h ../Core/Inc/DB_Main.h \
+ ../Core/Inc/DB_Constants.h ../Core/Inc/DI_Block.h \
+ ../Core/Inc/DB_Parameters.h ../Core/Inc/DB_Main.h \
+ ../Core/Inc/AI_Normalisation.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/apps/httpd.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/apps/httpd_opts.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/iana.h \
@@ -119,6 +124,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_usb.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd_ex.h:
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_adc.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_rcc.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_bus.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_system.h:
@@ -127,6 +133,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_utils.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_pwr.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_dma.h:
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_gpio.h:
 ../LWIP/App/lwip.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/opt.h:
@@ -169,6 +176,11 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/icmp.h:
 ../Core/Inc/DB_Parameters.h:
 ../Core/Inc/DB_Main.h:
+../Core/Inc/DB_Constants.h:
+../Core/Inc/DI_Block.h:
+../Core/Inc/DB_Parameters.h:
+../Core/Inc/DB_Main.h:
+../Core/Inc/AI_Normalisation.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/apps/httpd.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/apps/httpd_opts.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/iana.h:

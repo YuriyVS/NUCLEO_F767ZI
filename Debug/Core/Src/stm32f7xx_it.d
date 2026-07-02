@@ -32,6 +32,7 @@ Core/Src/stm32f7xx_it.o: ../Core/Src/stm32f7xx_it.c ../Core/Inc/main.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_usb.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd_ex.h \
+ ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_adc.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_rcc.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_bus.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_system.h \
@@ -40,8 +41,11 @@ Core/Src/stm32f7xx_it.o: ../Core/Src/stm32f7xx_it.c ../Core/Inc/main.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_utils.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_pwr.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_dma.h \
+ ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_gpio.h \
- ../Core/Inc/stm32f7xx_it.h
+ ../Core/Inc/stm32f7xx_it.h ../Core/Inc/DI_Block.h \
+ ../Core/Inc/DB_Parameters.h ../Core/Inc/DB_Main.h \
+ ../Core/Inc/AI_Normalisation.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal.h:
 ../Core/Inc/stm32f7xx_hal_conf.h:
@@ -76,6 +80,7 @@ Core/Src/stm32f7xx_it.o: ../Core/Src/stm32f7xx_it.c ../Core/Inc/main.h \
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_usb.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd_ex.h:
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_adc.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_rcc.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_bus.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_system.h:
@@ -84,5 +89,10 @@ Core/Src/stm32f7xx_it.o: ../Core/Src/stm32f7xx_it.c ../Core/Inc/main.h \
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_utils.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_pwr.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_dma.h:
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_gpio.h:
 ../Core/Inc/stm32f7xx_it.h:
+../Core/Inc/DI_Block.h:
+../Core/Inc/DB_Parameters.h:
+../Core/Inc/DB_Main.h:
+../Core/Inc/AI_Normalisation.h:

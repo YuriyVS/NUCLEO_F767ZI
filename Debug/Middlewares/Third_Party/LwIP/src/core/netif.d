@@ -35,6 +35,7 @@ Middlewares/Third_Party/LwIP/src/core/netif.o: \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_usb.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd_ex.h \
+ ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_adc.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_rcc.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_bus.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_system.h \
@@ -43,6 +44,7 @@ Middlewares/Third_Party/LwIP/src/core/netif.o: \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_utils.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_pwr.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_dma.h \
+ ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_gpio.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/debug.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/arch.h \
@@ -120,6 +122,7 @@ Middlewares/Third_Party/LwIP/src/core/netif.o: \
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_usb.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_pcd_ex.h:
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_adc.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_rcc.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_bus.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_system.h:
@@ -128,6 +131,7 @@ Middlewares/Third_Party/LwIP/src/core/netif.o: \
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_utils.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_pwr.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_dma.h:
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_gpio.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/debug.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/arch.h:

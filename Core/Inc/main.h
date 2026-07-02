@@ -29,6 +29,7 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f7xx_hal.h"
 
+#include "stm32f7xx_ll_adc.h"
 #include "stm32f7xx_ll_rcc.h"
 #include "stm32f7xx_ll_bus.h"
 #include "stm32f7xx_ll_system.h"
@@ -37,6 +38,7 @@ extern "C" {
 #include "stm32f7xx_ll_utils.h"
 #include "stm32f7xx_ll_pwr.h"
 #include "stm32f7xx_ll_dma.h"
+#include "stm32f7xx_ll_tim.h"
 #include "stm32f7xx_ll_gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -67,16 +69,46 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define DI_CountImpuls3_Pin LL_GPIO_PIN_2
+#define DI_CountImpuls3_GPIO_Port GPIOE
 #define USER_Btn_Pin LL_GPIO_PIN_13
 #define USER_Btn_GPIO_Port GPIOC
+#define DI1_Pin LL_GPIO_PIN_0
+#define DI1_GPIO_Port GPIOF
+#define DI2_Pin LL_GPIO_PIN_1
+#define DI2_GPIO_Port GPIOF
+#define DI3_Pin LL_GPIO_PIN_2
+#define DI3_GPIO_Port GPIOF
+#define DI4_Pin LL_GPIO_PIN_3
+#define DI4_GPIO_Port GPIOF
+#define DI5_Pin LL_GPIO_PIN_4
+#define DI5_GPIO_Port GPIOF
+#define DI6_Pin LL_GPIO_PIN_5
+#define DI6_GPIO_Port GPIOF
+#define DI7_Pin LL_GPIO_PIN_6
+#define DI7_GPIO_Port GPIOF
+#define DI8_Pin LL_GPIO_PIN_7
+#define DI8_GPIO_Port GPIOF
+#define DI9_Pin LL_GPIO_PIN_8
+#define DI9_GPIO_Port GPIOF
+#define DI10_Pin LL_GPIO_PIN_9
+#define DI10_GPIO_Port GPIOF
+#define DI11_Pin LL_GPIO_PIN_10
+#define DI11_GPIO_Port GPIOF
 #define MCO_Pin LL_GPIO_PIN_0
 #define MCO_GPIO_Port GPIOH
+#define AI5_Pin LL_GPIO_PIN_0
+#define AI5_GPIO_Port GPIOC
 #define RMII_MDC_Pin LL_GPIO_PIN_1
 #define RMII_MDC_GPIO_Port GPIOC
+#define AI1_Pin LL_GPIO_PIN_0
+#define AI1_GPIO_Port GPIOA
 #define RMII_REF_CLK_Pin LL_GPIO_PIN_1
 #define RMII_REF_CLK_GPIO_Port GPIOA
 #define RMII_MDIO_Pin LL_GPIO_PIN_2
 #define RMII_MDIO_GPIO_Port GPIOA
+#define AI4_Pin LL_GPIO_PIN_3
+#define AI4_GPIO_Port GPIOA
 #define RMII_CRS_DV_Pin LL_GPIO_PIN_7
 #define RMII_CRS_DV_GPIO_Port GPIOA
 #define RMII_RXD0_Pin LL_GPIO_PIN_4
@@ -85,6 +117,10 @@ void Error_Handler(void);
 #define RMII_RXD1_GPIO_Port GPIOC
 #define LD1_Pin LL_GPIO_PIN_0
 #define LD1_GPIO_Port GPIOB
+#define DI12_Pin LL_GPIO_PIN_11
+#define DI12_GPIO_Port GPIOF
+#define DI13_Pin LL_GPIO_PIN_12
+#define DI13_GPIO_Port GPIOF
 #define RMII_TXD1_Pin LL_GPIO_PIN_13
 #define RMII_TXD1_GPIO_Port GPIOB
 #define LD3_Pin LL_GPIO_PIN_14
@@ -119,6 +155,10 @@ void Error_Handler(void);
 #define SWO_GPIO_Port GPIOB
 #define LD2_Pin LL_GPIO_PIN_7
 #define LD2_GPIO_Port GPIOB
+#define DI_CountImpuls1_Pin LL_GPIO_PIN_0
+#define DI_CountImpuls1_GPIO_Port GPIOE
+#define DI_CountImpuls2_Pin LL_GPIO_PIN_1
+#define DI_CountImpuls2_GPIO_Port GPIOE
 
 /* USER CODE BEGIN Private defines */
 
