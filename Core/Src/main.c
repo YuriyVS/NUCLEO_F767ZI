@@ -30,6 +30,8 @@
 #include "DB_Constants.h"
 #include "DI_Block.h"
 #include "AI_Normalisation.h"
+#include "DO_Block.h"
+#include "AO_Normalisation.h"
 #include "lwip/apps/httpd.h" // Обязательно для httpd_init()
 #include "web_server.h"
 /* USER CODE END Includes */
@@ -58,7 +60,9 @@ CRC_HandleTypeDef hcrc;
 UART_HandleTypeDef huart3;
 UART_HandleTypeDef huart6;
 DMA_HandleTypeDef hdma_usart3_rx;
+DMA_HandleTypeDef hdma_usart3_tx;
 DMA_HandleTypeDef hdma_usart6_rx;
+DMA_HandleTypeDef hdma_usart6_tx;
 
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
@@ -68,6 +72,10 @@ extern UART_HandleTypeDef huart6; // Кажемо компілятору: "huart
 uint16_t Modbus_Registers[10] = {0}; // Наші Holding Registers
 uint8_t RTU_Rx_Buf[256];             // Буфер для прийому по UART
 uint8_t rx_buf_usart6[256];
+uint8_t usart3_tx_buf[256];
+uint8_t usart6_tx_buf[256];
+uint16_t Modbus6_Rx_Len;
+bool Modbus6_New_Packet_Flag;
 uint32_t DI_Timer = 0; // Переменная для хранения времени последнего опроса входов
 bool filterDI = 1;
 
@@ -76,6 +84,11 @@ volatile uint16_t aADCxConvertedData[ADC_CHANNELS_COUNT] __attribute__((section(
 
 volatile uint32_t ADC_Accumulator[ADC_CHANNELS_COUNT] = {0};
 volatile uint32_t ADC_SamplesCount = 0;
+
+bool test = 0;
+float F_cpu;
+float F_tim;
+uint32_t last_tick_ai = 0, new_tick_ai= 0, delta_ai =0, min =400000, max = 0, samples_count_max=0;
 
 /* USER CODE END PV */
 
@@ -90,6 +103,7 @@ static void MX_CRC_Init(void);
 static void MX_USART6_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM7_Init(void);
+static void MX_DAC_Init(void);
 /* USER CODE BEGIN PFP */
 void MPU_Config(void);
 uint16_t Modbus_CRC16(uint8_t *buffer, uint16_t length);
@@ -170,6 +184,7 @@ int main(void)
   MX_USART6_UART_Init();
   MX_ADC1_Init();
   MX_TIM7_Init();
+  MX_DAC_Init();
   /* USER CODE BEGIN 2 */
   MX_DMA_ADC_Init();  // 1. Сначала тактируем и взводим DMA
 //  MX_ADC1_Init();     // 2. Настраиваем АЦП (он связывается с DMA)
@@ -227,12 +242,17 @@ int main(void)
           DWT_CTRL_FOLDEVTENA_Msk;   // Было FOLDENA
 
   DBParameters = DBParametersFactory;
+  uint32_t last_tick_ao = 0;
   DBMain.b96.Save_to_Flash = 0;
   DBMain.b96.Read_from_Flash = 0;
   Init_FreqChannels();
-  uint32_t last_tick_ai = 0, new_tick_ai= 0;
-  float dt_ai = 0.0033f; // Расчет каждые 3.3 мс
+
+  float dt_ai = 3.3f; // Расчет каждые 3.3 мс
+  LL_DAC_Enable(DAC1, LL_DAC_CHANNEL_1);
+  LL_DAC_Enable(DAC1, LL_DAC_CHANNEL_2);
   DI_Timer = HAL_GetTick();
+  new_tick_ai = DWT->CYCCNT;
+  last_tick_ai = new_tick_ai;
   while (1)
   {
 	      if(filterDI){
@@ -248,10 +268,10 @@ int main(void)
 	  		  DI_XOR();
 	  		Update_Calculated_Frequency();
 	  	  }
-	      // 1. ГОЛОВНЕ: Обробка мережевого стека LwIP.
-	      // Без цієї функції Modbus TCP не буде відповідати!
+//	      // 1. ГОЛОВНЕ: Обробка мережевого стека LwIP.
+//	      // Без цієї функції Modbus TCP не буде відповідати!
 	      MX_LWIP_Process();
-
+//
 	      // 2. (Опціонально) "Heartbeat" - миготіння світлодіодом LD1 (зелений),
 	      // щоб візуально бачити, що програма не зависла.
 	      static uint32_t last_heartbeat = 0;
@@ -261,7 +281,7 @@ int main(void)
 	          last_heartbeat = HAL_GetTick();
 	          //UART3_SendString("System working...\r\n");
 	          char msg[32];
-	          sprintf(msg, "Heartbeat Reg[1]: %d\r\n", Modbus_Registers[1]);
+	          //sprintf(msg, "Heartbeat Reg[1]: %d\r\n", Modbus_Registers[1]);
 	          //UART3_SendString(msg);
 
 	      }
@@ -280,7 +300,7 @@ int main(void)
 	      	 }
 	      	 last_can_tick = HAL_GetTick(); // Тепер змінна використовується!
 	      }
-
+//
 	      if (DBMain.b96.Save_to_Flash) {
 	      	      DB_SaveToFlash();
 	      	      DBMain.b96.Save_to_Flash = false;
@@ -289,24 +309,37 @@ int main(void)
 	    	  	  DB_ReadFromFlash();
 	      	      DBMain.b96.Read_from_Flash = false;
 	      }
-
+//
 	      Process_Alarm_Log();
 
 		  //Аналогові входи. Например, расчет каждые 3.3 мс
 //	      new_tick_ai = HAL_GetTick();
-//	      if (new_tick_ai - last_tick_ai >= (uint32_t)(dt_ai * 1000))
+//	      if (new_tick_ai - last_tick_ai >= (uint32_t)(dt_ai))
 //	      {
 //	    	  last_tick_ai = new_tick_ai;
 	      // Вместо HAL_GetTick() проверяем глобальный счетчик, который инкрементируется в прерывании DMA
-	      if (samples_count >= 44) // 44 выборки * 75 мкс = ровно 3.3 мс
-	      {
-		          // Отключаем прерывания на момент копирования, чтобы данные не изменились
+//	      if (samples_count >= 44) // 44 выборки * 75 мкс = ровно 3.3 мс
+//	      {
+	    	  new_tick_ai = DWT->CYCCNT;
+	       if (new_tick_ai - last_tick_ai >= 316800)
+	       {
+	    	  //last_tick_ai = new_tick_ai;
+	    	  delta_ai = new_tick_ai - last_tick_ai;
+	    	  if(delta_ai < min)min = delta_ai;
+	    	  if(delta_ai > max)max = delta_ai;
+	    	  if(delta_ai>2000000){
+	    		  max=max;
+	    	  }
+	    	  last_tick_ai = new_tick_ai;
+	    	  if(samples_count > samples_count_max)samples_count_max=samples_count;
+	    	  // Отключаем прерывания на момент копирования, чтобы данные не изменились
 		          __disable_irq();
 		          for(int i=0; i<6; i++) {
 		        	  AI_Channels[i].RawSum = raw_sum[i];
 		        	  AI_Channels[i].SamplesCount = samples_count;
 		        	  raw_sum[i] = 0; // Сбрасываем для нового цикла накопления
 		          }
+
 		          samples_count = 0;
 		          __enable_irq();
 
@@ -346,46 +379,72 @@ int main(void)
 	//	          }
 		      }
 
+		  DBMain.b32.i380V_Podano_DOxor = test;
+		  DO_XOR();
+		  Write_DO_Output();
 
+		  //Аналогові виходи. Нормалізація сигналів
+		  if (HAL_GetTick() - last_tick_ao >= (uint32_t)DBConstants.f50.TaktFilterAO) {
+			      last_tick_ao = HAL_GetTick();
+
+		          // Частота генератора
+		          Process_AO(&AO_GenFreq, DBMain.f50.GenFreq, DBParameters.f100.P80_2, DBParameters.f100.P80_3, DBParameters.f100.P80_5);
+		          DBMain.f50.GenFreqHz = DBMain.f50.GenFreq * DBParameters.f100.P80_4 * 0.01f; //Hz
+
+		          // Ток АКБ
+		          Process_AO(&AO_Iakb, DBMain.f50.Iakb, DBParameters.f100.P81_2, DBParameters.f100.P81_3, DBParameters.f100.P81_5);
+		          DBMain.f50.IakbA = DBMain.f50.Iakb * DBParameters.f100.P81_4 * 0.01f; //A
+		  }
+
+		  if (Modbus6_New_Packet_Flag) {
+		      Modbus_RTU_Parse(&huart6, rx_buf_usart6, Modbus6_Rx_Len);
+		      Modbus6_New_Packet_Flag = 0;
+		      // Перезапускаем прием
+		      HAL_UARTEx_ReceiveToIdle_DMA(&huart6, rx_buf_usart6, sizeof(rx_buf_usart6));
+		  }
+//
+//
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	      c = a / b; // Проверьте в Disassembly, должна быть инструкция VMUL.F32
-	      c_d = a_d / b_d; // Если здесь будет инструкция VMUL.F64 — значит DP работает.
-	      start_f = DWT->CYCCNT;
-	      CalculateThyristorPhasef(); //c = sinf(a);//c = a / b; // Проверьте в Disassembly, должна быть инструкция VMUL.F32
-	      end_f = DWT->CYCCNT;
-	      delta_f = end_f - start_f;
-
-	      start_d = DWT->CYCCNT;
-	      c_d = a_d / b_d; //CalculateThyristorPhased(); //c_d = sin(a_d);//c_d = a_d / b_d; // Если здесь будет инструкция VMUL.F64 — значит DP работает.
-	                       // Если будет BL __aeabi_dmul — это медленная эмуляция.
-	      end_d = DWT->CYCCNT;
-	      delta_d = end_d - start_d;
-	      delta_d = delta_d;
-
-	      //DWT->EXCCNT = 0; // Сброс
-	      //start_ex = DWT->EXCCNT;
-
-	      //HAL_Delay(1); // Ждем 10 мс. За это время произойдет ровно 10 прерываний SysTick
-
-	      //end_ex = DWT->EXCCNT;
-	      if(DWT->EXCCNT > end_ex)
-	      {
-	    	  end_ex = DWT->EXCCNT;
-	      }
-	      if(DWT->EXCCNT > 0)
-	      {
-	    	  if(DWT->EXCCNT < start_ex){start_ex = DWT->EXCCNT;}
-	    	  total_overhead += DWT->EXCCNT;
-	    	  count += 1;
-	    	  average = total_overhead / count;
-	    	  DWT->EXCCNT = 0;
-	    	  Modbus_Registers[0] = average;
-	    	  Modbus_Registers[2] = end_ex;
-	    	  //Modbus_Registers[3] = start_ex;
-
-	      }
+//	      c = a / b; // Проверьте в Disassembly, должна быть инструкция VMUL.F32
+//	      c_d = a_d / b_d; // Если здесь будет инструкция VMUL.F64 — значит DP работает.
+//	      start_f = DWT->CYCCNT;
+//	      CalculateThyristorPhasef(); //c = sinf(a);//c = a / b; // Проверьте в Disassembly, должна быть инструкция VMUL.F32
+//	      end_f = DWT->CYCCNT;
+//	      delta_f = end_f - start_f;
+//
+//	      start_d = DWT->CYCCNT;
+//	      c_d = a_d / b_d; //CalculateThyristorPhased(); //c_d = sin(a_d);//c_d = a_d / b_d; // Если здесь будет инструкция VMUL.F64 — значит DP работает.
+//	                       // Если будет BL __aeabi_dmul — это медленная эмуляция.
+//	      end_d = DWT->CYCCNT;
+//	      delta_d = end_d - start_d;
+//	      delta_d = delta_d;
+//
+//	      //DWT->EXCCNT = 0; // Сброс
+//	      //start_ex = DWT->EXCCNT;
+//
+//	      //HAL_Delay(1); // Ждем 10 мс. За это время произойдет ровно 10 прерываний SysTick
+//
+//	      //end_ex = DWT->EXCCNT;
+//	      if(DWT->EXCCNT > end_ex)
+//	      {
+//	    	  end_ex = DWT->EXCCNT;
+//	      }
+//	      if(DWT->EXCCNT > 0)
+//	      {
+//	    	  if(DWT->EXCCNT < start_ex){start_ex = DWT->EXCCNT;}
+//	    	  total_overhead += DWT->EXCCNT;
+//	    	  count += 1;
+//	    	  average = total_overhead / count;
+//	    	  DWT->EXCCNT = 0;
+//	    	  Modbus_Registers[0] = average;
+//	    	  Modbus_Registers[2] = end_ex;
+//	    	  //Modbus_Registers[3] = start_ex;
+//
+//	      }
+//	      F_cpu = (float)HAL_RCC_GetHCLKFreq();
+//	      F_tim = (float)(HAL_RCC_GetPCLK1Freq() * 2); // Обычно частота таймеров в 2 раза выше PCLK
 
   }
   /* USER CODE END 3 */
@@ -635,6 +694,60 @@ static void MX_CRC_Init(void)
 }
 
 /**
+  * @brief DAC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_DAC_Init(void)
+{
+
+  /* USER CODE BEGIN DAC_Init 0 */
+
+  /* USER CODE END DAC_Init 0 */
+
+  LL_DAC_InitTypeDef DAC_InitStruct = {0};
+
+  LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /* Peripheral clock enable */
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_DAC1);
+
+  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
+  /**DAC GPIO Configuration
+  PA4   ------> DAC_OUT1
+  PA5   ------> DAC_OUT2
+  */
+  GPIO_InitStruct.Pin = AO1_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(AO1_GPIO_Port, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = AO2_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(AO2_GPIO_Port, &GPIO_InitStruct);
+
+  /* USER CODE BEGIN DAC_Init 1 */
+
+  /* USER CODE END DAC_Init 1 */
+
+  /** DAC channel OUT1 config
+  */
+  DAC_InitStruct.TriggerSource = LL_DAC_TRIG_SOFTWARE;
+  DAC_InitStruct.WaveAutoGeneration = LL_DAC_WAVE_AUTO_GENERATION_NONE;
+  DAC_InitStruct.OutputBuffer = LL_DAC_OUTPUT_BUFFER_ENABLE;
+  LL_DAC_Init(DAC, LL_DAC_CHANNEL_1, &DAC_InitStruct);
+
+  /** DAC channel OUT2 config
+  */
+  LL_DAC_Init(DAC, LL_DAC_CHANNEL_2, &DAC_InitStruct);
+  /* USER CODE BEGIN DAC_Init 2 */
+
+  /* USER CODE END DAC_Init 2 */
+
+}
+
+/**
   * @brief TIM7 Initialization Function
   * @param None
   * @retval None
@@ -784,11 +897,17 @@ static void MX_DMA_Init(void)
 
   /* DMA interrupt init */
   /* DMA1_Stream1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 4, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
+  /* DMA1_Stream3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 4, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
   /* DMA2_Stream1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 4, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
+  /* DMA2_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream6_IRQn, 4, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream6_IRQn);
 
 }
 
@@ -812,17 +931,44 @@ static void MX_GPIO_Init(void)
   LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOH);
   LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
   LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
-  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOD);
   LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOG);
+  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOD);
 
   /**/
   LL_GPIO_ResetOutputPin(LD1_GPIO_Port, LD1_Pin);
 
   /**/
+  LL_GPIO_ResetOutputPin(DO1_GPIO_Port, DO1_Pin);
+
+  /**/
+  LL_GPIO_ResetOutputPin(DO2_GPIO_Port, DO2_Pin);
+
+  /**/
   LL_GPIO_ResetOutputPin(LD3_GPIO_Port, LD3_Pin);
 
   /**/
+  LL_GPIO_ResetOutputPin(DO3_GPIO_Port, DO3_Pin);
+
+  /**/
+  LL_GPIO_ResetOutputPin(DO4_GPIO_Port, DO4_Pin);
+
+  /**/
+  LL_GPIO_ResetOutputPin(DO5_GPIO_Port, DO5_Pin);
+
+  /**/
+  LL_GPIO_ResetOutputPin(DO6_GPIO_Port, DO6_Pin);
+
+  /**/
   LL_GPIO_ResetOutputPin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin);
+
+  /**/
+  LL_GPIO_ResetOutputPin(DO9_GPIO_Port, DO9_Pin);
+
+  /**/
+  LL_GPIO_ResetOutputPin(DO11_GPIO_Port, DO11_Pin);
+
+  /**/
+  LL_GPIO_ResetOutputPin(DO13_GPIO_Port, DO13_Pin);
 
   /**/
   LL_GPIO_ResetOutputPin(LD2_GPIO_Port, LD2_Pin);
@@ -978,12 +1124,60 @@ static void MX_GPIO_Init(void)
   LL_GPIO_Init(DI13_GPIO_Port, &GPIO_InitStruct);
 
   /**/
+  GPIO_InitStruct.Pin = DO1_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(DO1_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DO2_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(DO2_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
   GPIO_InitStruct.Pin = LD3_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(LD3_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DO3_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(DO3_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DO4_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(DO4_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DO5_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(DO5_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DO6_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(DO6_GPIO_Port, &GPIO_InitStruct);
 
   /**/
   GPIO_InitStruct.Pin = USB_PowerSwitchOn_Pin;
@@ -998,6 +1192,30 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DO9_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(DO9_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DO11_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(DO11_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = DO13_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(DO13_GPIO_Port, &GPIO_InitStruct);
 
   /**/
   GPIO_InitStruct.Pin = LD2_Pin;
@@ -1109,9 +1327,24 @@ void Modbus_RTU_Parse(UART_HandleTypeDef *huart,uint8_t *rx_data, uint16_t lengt
     uint16_t start_addr = (rx_data[2] << 8) | rx_data[3];
     uint16_t reg_count = (rx_data[4] << 8) | rx_data[5];
 
-    uint8_t tx_buf[256];
+    //uint8_t tx_buf[256];
+    uint8_t *tx_buf = NULL;
     uint16_t tx_len = 0;
     uint16_t *base_ptr = NULL;
+
+    // 1. Аппаратно разделяем буферы отправки, чтобы USART3 и USART6 не терли данные друг другу
+        if (huart->Instance == USART3) {
+            tx_buf = usart3_tx_buf;
+        } else if (huart->Instance == USART6) {
+            tx_buf = usart6_tx_buf;
+        } else {
+            return; // Неизвестный UART
+        }
+
+        // Проверяем, не занят ли DMA отправкой предыдущего пакета этого интерфейса!
+        if (huart->gState != HAL_UART_STATE_READY) {
+            return; // Если прошлый пакет еще шлется, игнорируем новый, чтобы не вызвать аппаратную ошибку
+        }
 
     // Выбор базы данных
     if (start_addr < 1000) {
@@ -1153,7 +1386,13 @@ void Modbus_RTU_Parse(UART_HandleTypeDef *huart,uint8_t *rx_data, uint16_t lengt
         uint16_t res_crc = Modbus_CRC16(tx_buf, tx_len);
         tx_buf[tx_len++] = res_crc & 0xFF;
         tx_buf[tx_len++] = (res_crc >> 8) & 0xFF;
-        HAL_UART_Transmit(huart, tx_buf, tx_len, 100);
+        //HAL_UART_Transmit(huart, tx_buf, tx_len, 100);
+        // Пишем неблокирующий запуск DMA отправки:
+        // КРИТИЧЕСКИ ВАЖНО ДЛЯ STM32F7: Выталкиваем данные из кэша процессора в физическую RAM memory
+        // без этого DMA отправит старые данные или нули!
+        SCB_CleanDCache_by_Addr((uint32_t *)tx_buf, tx_len);
+
+        HAL_UART_Transmit_DMA(huart, tx_buf, tx_len);
     }
 }
 
@@ -1243,8 +1482,10 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
     }
     else if (huart->Instance == USART6) {
                 // Данные от ESP32-C3
-                Modbus_RTU_Parse(huart, rx_buf_usart6, Size);
-                HAL_UARTEx_ReceiveToIdle_DMA(&huart6, rx_buf_usart6, sizeof(rx_buf_usart6));
+    	        Modbus6_Rx_Len = Size;
+    	        Modbus6_New_Packet_Flag = 1;
+//                Modbus_RTU_Parse(huart, rx_buf_usart6, Size);
+//                HAL_UARTEx_ReceiveToIdle_DMA(&huart6, rx_buf_usart6, sizeof(rx_buf_usart6));
         }
 }
 
@@ -1272,7 +1513,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
 }
 
 void CAN1_Init_User(void){
-	HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 0, 0);
+	HAL_NVIC_SetPriority(CAN1_RX0_IRQn, 5, 0);
 	HAL_NVIC_EnableIRQ(CAN1_RX0_IRQn);
 
 	CAN_FilterTypeDef  sFilterConfig;

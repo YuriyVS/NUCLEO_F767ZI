@@ -1,0 +1,2 @@
+../Core/Src/DO_Block.c:12:6:DO_XOR	4	static
+../Core/Src/DO_Block.c:31:6:Write_DO_Output	4	static

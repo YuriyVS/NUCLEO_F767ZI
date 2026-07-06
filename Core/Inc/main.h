@@ -30,6 +30,7 @@ extern "C" {
 #include "stm32f7xx_hal.h"
 
 #include "stm32f7xx_ll_adc.h"
+#include "stm32f7xx_ll_dac.h"
 #include "stm32f7xx_ll_rcc.h"
 #include "stm32f7xx_ll_bus.h"
 #include "stm32f7xx_ll_system.h"
@@ -109,6 +110,10 @@ void Error_Handler(void);
 #define RMII_MDIO_GPIO_Port GPIOA
 #define AI4_Pin LL_GPIO_PIN_3
 #define AI4_GPIO_Port GPIOA
+#define AO1_Pin LL_GPIO_PIN_4
+#define AO1_GPIO_Port GPIOA
+#define AO2_Pin LL_GPIO_PIN_5
+#define AO2_GPIO_Port GPIOA
 #define RMII_CRS_DV_Pin LL_GPIO_PIN_7
 #define RMII_CRS_DV_GPIO_Port GPIOA
 #define RMII_RXD0_Pin LL_GPIO_PIN_4
@@ -121,6 +126,10 @@ void Error_Handler(void);
 #define DI12_GPIO_Port GPIOF
 #define DI13_Pin LL_GPIO_PIN_12
 #define DI13_GPIO_Port GPIOF
+#define DO1_Pin LL_GPIO_PIN_0
+#define DO1_GPIO_Port GPIOG
+#define DO2_Pin LL_GPIO_PIN_1
+#define DO2_GPIO_Port GPIOG
 #define RMII_TXD1_Pin LL_GPIO_PIN_13
 #define RMII_TXD1_GPIO_Port GPIOB
 #define LD3_Pin LL_GPIO_PIN_14
@@ -129,10 +138,20 @@ void Error_Handler(void);
 #define STLK_RX_GPIO_Port GPIOD
 #define STLK_TX_Pin LL_GPIO_PIN_9
 #define STLK_TX_GPIO_Port GPIOD
+#define DO3_Pin LL_GPIO_PIN_2
+#define DO3_GPIO_Port GPIOG
+#define DO4_Pin LL_GPIO_PIN_3
+#define DO4_GPIO_Port GPIOG
+#define DO5_Pin LL_GPIO_PIN_4
+#define DO5_GPIO_Port GPIOG
+#define DO6_Pin LL_GPIO_PIN_5
+#define DO6_GPIO_Port GPIOG
 #define USB_PowerSwitchOn_Pin LL_GPIO_PIN_6
 #define USB_PowerSwitchOn_GPIO_Port GPIOG
 #define USB_OverCurrent_Pin LL_GPIO_PIN_7
 #define USB_OverCurrent_GPIO_Port GPIOG
+#define DO9_Pin LL_GPIO_PIN_8
+#define DO9_GPIO_Port GPIOG
 #define USB_SOF_Pin LL_GPIO_PIN_8
 #define USB_SOF_GPIO_Port GPIOA
 #define USB_VBUS_Pin LL_GPIO_PIN_9
@@ -147,8 +166,12 @@ void Error_Handler(void);
 #define TMS_GPIO_Port GPIOA
 #define TCK_Pin LL_GPIO_PIN_14
 #define TCK_GPIO_Port GPIOA
+#define DO11_Pin LL_GPIO_PIN_10
+#define DO11_GPIO_Port GPIOG
 #define RMII_TX_EN_Pin LL_GPIO_PIN_11
 #define RMII_TX_EN_GPIO_Port GPIOG
+#define DO13_Pin LL_GPIO_PIN_12
+#define DO13_GPIO_Port GPIOG
 #define RMII_TXD0_Pin LL_GPIO_PIN_13
 #define RMII_TXD0_GPIO_Port GPIOG
 #define SWO_Pin LL_GPIO_PIN_3
