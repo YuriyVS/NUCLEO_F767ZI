@@ -4,10 +4,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// Адрес начала 7-го сектора (для STM32F745 1MB)
-#define ADDR_FLASH_SECTOR_7     ((uint32_t)0x080C0000)
-#define FLASH_STORAGE_ADDRESS   ADDR_FLASH_SECTOR_7
-#define FLASH_SECTOR_NUMBER     FLASH_SECTOR_7
+// Настройки Flash памяти для NUCLEO_F767ZI (2MB) в режиме SINGLE-BANK (nDBANK Checked)
+// Самый последний сектор платы — это Сектор 11 (размером 256 КБ)
+#define ADDR_FLASH_SECTOR_11    ((uint32_t)0x081C0000)
+#define FLASH_STORAGE_ADDRESS   ADDR_FLASH_SECTOR_11
+#define FLASH_SECTOR_NUMBER     FLASH_SECTOR_11  // Используем стандартный макрос HAL
 
 /* --- PROJECT SETTINGS STRUCTURES (Настройки/Уставки) --- */
 

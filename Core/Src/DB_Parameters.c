@@ -196,6 +196,9 @@ void DB_SaveToFlash(void) {
     EraseInitStruct.Sector        = FLASH_SECTOR_NUMBER;
     EraseInitStruct.NbSectors     = 1;
 
+    // КРИТИЧНО ДЛЯ F767: В Single-Bank режиме адресация идет через первый банк
+    EraseInitStruct.Banks         = FLASH_BANK_1;
+
     if (HAL_FLASHEx_Erase(&EraseInitStruct, &SectorError) != HAL_OK) {
         // Ошибка стирания (можно обработать через Error_Handler)
         HAL_FLASH_Lock();
@@ -205,7 +208,7 @@ void DB_SaveToFlash(void) {
     // 4. Запись данных по 32 бита (Word)
     uint32_t *dataPtr = (uint32_t*)&DBParameters;
     uint32_t address = FLASH_STORAGE_ADDRESS;
-    uint32_t sizeWords = sizeof(DB_Parameters_Main) / 4;
+    uint32_t sizeWords = (sizeof(DB_Parameters_Main) + 3) / 4;
 
     for (uint32_t i = 0; i < sizeWords; i++) {
         if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, address, dataPtr[i]) == HAL_OK) {

@@ -90,6 +90,16 @@ float F_cpu;
 float F_tim;
 uint32_t last_tick_ai = 0, new_tick_ai= 0, delta_ai =0, min =400000, max = 0, samples_count_max=0;
 
+/* Символы из Linker Script для ITCM (Код) */
+extern uint32_t _sitcm_text; /* Начало во Flash (LMA) */
+extern uint32_t _sitcm_ram;  /* Начало в RAM (VMA) */
+extern uint32_t _eitcm_ram;  /* Конец в RAM */
+
+/* Символы из Linker Script для DTCM (Данные) */
+extern uint32_t _sdtcm_data; /* Начало во Flash (LMA) */
+extern uint32_t _sdtcm_ram;  /* Начало в RAM (VMA) */
+extern uint32_t _edtcm_ram;  /* Конец в RAM */
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -113,6 +123,9 @@ void CAN1_Init_User(void);
 
 static void MX_DMA_ADC_Init(void);
 static void MX_TIM2_Init(void);
+
+void RAM_Sections_Init(void);
+void Backup_SRAM_Init(void);
 
 
 /* USER CODE END PFP */
@@ -170,7 +183,8 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  RAM_Sections_Init();
+  Backup_SRAM_Init();
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -1728,6 +1742,43 @@ static void MX_TIM2_Init(void)
   LL_TIM_SetTriggerOutput(TIM2, LL_TIM_TRGO_UPDATE);
 
   LL_TIM_EnableCounter(TIM2);
+}
+
+void RAM_Sections_Init(void) {
+    uint32_t *pSrc, *pDest;
+
+    /* 1. Копируем критический код в ITCM-RAM (инструкции) */
+    pSrc = &_sitcm_text;
+    pDest = &_sitcm_ram;
+    while (pDest < &_eitcm_ram) {
+        *pDest++ = *pSrc++;
+    }
+
+    /* 2. Копируем быстрые данные в DTCM-RAM (переменные) */
+    pSrc = &_sdtcm_data;
+    pDest = &_sdtcm_ram;
+    while (pDest < &_edtcm_ram) {
+        *pDest++ = *pSrc++;
+    }
+
+    /* Опционально: барьер памяти, чтобы CPU "увидел" новые инструкции */
+    __DSB(); // Data Synchronization Barrier
+    __ISB(); // Instruction Synchronization Barrier
+}
+
+void Backup_SRAM_Init(void) {
+    /* 1. Включаем тактирование модуля управления питанием (PWR) */
+    __HAL_RCC_PWR_CLK_ENABLE();
+
+    /* 2. Разрешаем доступ к Backup-домену (RTC и Backup SRAM) */
+    HAL_PWR_EnableBkUpAccess();
+
+    /* 3. Включаем тактирование самой Backup SRAM */
+    __HAL_RCC_BKPSRAM_CLK_ENABLE();
+
+    /* 4. (Опционально) Включаем регулятор низкого энергопотребления для Backup SRAM,
+       чтобы данные сохранялись в режиме ожидания */
+    HAL_PWREx_EnableBkUpReg();
 }
 
 

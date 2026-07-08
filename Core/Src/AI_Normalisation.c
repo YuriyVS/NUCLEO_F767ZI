@@ -8,13 +8,13 @@
 const float measuring_range_ai = 4095.0f; // 12-битный АЦП
 
 AI_Channel_t AI_Channels[6] = {0};
-uint32_t raw_sum[6] = {0};
-uint32_t samples_count = 0;
+uint32_t __attribute__((section(".dtcm_data"))) raw_sum[6] = {0};
+uint32_t __attribute__((section(".dtcm_data"))) samples_count = 0;
 
 /**
   * @brief Накопление данных (вызывать в DMA ISR)
   */
-void AI_Accumulate(uint16_t *adc_data) {
+void __attribute__((section(".itcm_text"))) AI_Accumulate(uint16_t *adc_data) {
     for (int i = 0; i < 6; i++) {
     	raw_sum[i] += adc_data[i];
         //AI_Channels[i].RawSum += adc_data[i];

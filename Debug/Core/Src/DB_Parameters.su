@@ -2,4 +2,4 @@
 ../Core/Src/DB_Parameters.c:174:6:DB_UpdateCRC	8	static
 ../Core/Src/DB_Parameters.c:178:6:DB_CheckCRC	24	static
 ../Core/Src/DB_Parameters.c:183:6:DB_SaveToFlash	56	static
-../Core/Src/DB_Parameters.c:225:6:DB_ReadFromFlash	832	static
+../Core/Src/DB_Parameters.c:228:6:DB_ReadFromFlash	832	static
