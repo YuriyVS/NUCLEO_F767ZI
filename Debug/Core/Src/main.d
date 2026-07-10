@@ -91,7 +91,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/apps/httpd.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/apps/httpd_opts.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/iana.h \
- ../Core/Inc/web_server.h
+ ../Core/Inc/web_server.h ../Core/Inc/Block_Synhro.h \
+ ../Core/Inc/DB_Constants.h ../Core/Inc/Block_Sifu.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal.h:
 ../Core/Inc/stm32f7xx_hal_conf.h:
@@ -190,3 +191,6 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Middlewares/Third_Party/LwIP/src/include/lwip/apps/httpd_opts.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/iana.h:
 ../Core/Inc/web_server.h:
+../Core/Inc/Block_Synhro.h:
+../Core/Inc/DB_Constants.h:
+../Core/Inc/Block_Sifu.h:

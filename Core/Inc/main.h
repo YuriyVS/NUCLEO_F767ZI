@@ -138,6 +138,10 @@ void Error_Handler(void);
 #define STLK_RX_GPIO_Port GPIOD
 #define STLK_TX_Pin LL_GPIO_PIN_9
 #define STLK_TX_GPIO_Port GPIOD
+#define YI3_Pin LL_GPIO_PIN_13
+#define YI3_GPIO_Port GPIOD
+#define YI6_Pin LL_GPIO_PIN_15
+#define YI6_GPIO_Port GPIOD
 #define DO3_Pin LL_GPIO_PIN_2
 #define DO3_GPIO_Port GPIOG
 #define DO4_Pin LL_GPIO_PIN_3
@@ -152,6 +156,10 @@ void Error_Handler(void);
 #define USB_OverCurrent_GPIO_Port GPIOG
 #define DO9_Pin LL_GPIO_PIN_8
 #define DO9_GPIO_Port GPIOG
+#define YI5_Pin LL_GPIO_PIN_6
+#define YI5_GPIO_Port GPIOC
+#define YI2_Pin LL_GPIO_PIN_7
+#define YI2_GPIO_Port GPIOC
 #define USB_SOF_Pin LL_GPIO_PIN_8
 #define USB_SOF_GPIO_Port GPIOA
 #define USB_VBUS_Pin LL_GPIO_PIN_9
@@ -176,6 +184,10 @@ void Error_Handler(void);
 #define RMII_TXD0_GPIO_Port GPIOG
 #define SWO_Pin LL_GPIO_PIN_3
 #define SWO_GPIO_Port GPIOB
+#define YI1_Pin LL_GPIO_PIN_4
+#define YI1_GPIO_Port GPIOB
+#define YI4_Pin LL_GPIO_PIN_5
+#define YI4_GPIO_Port GPIOB
 #define LD2_Pin LL_GPIO_PIN_7
 #define LD2_GPIO_Port GPIOB
 #define DI_CountImpuls1_Pin LL_GPIO_PIN_0

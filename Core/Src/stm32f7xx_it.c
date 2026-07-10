@@ -24,6 +24,8 @@
 /* USER CODE BEGIN Includes */
 #include "DI_Block.h"
 #include "AI_Normalisation.h"
+#include "Block_Synhro.h"
+#include "Block_Sifu.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -262,6 +264,66 @@ void USART3_IRQHandler(void)
   /* USER CODE BEGIN USART3_IRQn 1 */
 
   /* USER CODE END USART3_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM6 global interrupt, DAC1 and DAC2 underrun error interrupts.
+  */
+void TIM6_DAC_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM6_DAC_IRQn 0 */
+
+	// 1. Аппаратно проверяем: прерывание случилось именно от переполнения TIM6?
+	  if (LL_TIM_IsActiveFlag_UPDATE(TIM6))
+	  {
+	    // 2. ОБЯЗАТЕЛЬНО сбрасываем флаг, иначе процессор зациклится в прерывании навсегда
+	    LL_TIM_ClearFlag_UPDATE(TIM6);
+
+	    static uint8_t step = 0;
+
+	    // Имитация трехфазного меандра 50 Гц со сдвигом 120° (шаги таймера по 60°)
+	    // Нам важны моменты установки в 1 (Rising Edge) — это точки синхронизации СИФУ.
+	    //
+	    // Назначение пинов имитатора (соединить проводками на плате Nucleo):
+	    // PE4 (Имитация Фазы А) -> подключить к PA6 (Вход синхронизации TIM3_CH1)
+	    // PE5 (Имитация Фазы B) -> подключить к PD14 (Вход синхронизации TIM4_CH3)
+	    // PE6 (Имитация Фазы C) -> подключить к PC9 (Вход синхронизации TIM8_CH4)
+	    switch (step)
+	    {
+	      case 0: // 0°
+	        LL_GPIO_SetOutputPin(GPIOE, LL_GPIO_PIN_4);   // Фаза А: ВВЕРХ (Захват нуля А!)
+	        LL_GPIO_ResetOutputPin(GPIOE, LL_GPIO_PIN_5); // Фаза B: НИЗ
+	        LL_GPIO_SetOutputPin(GPIOE, LL_GPIO_PIN_6);   // Фаза C: ВВЕРХ
+	        break;
+
+	      case 1: // 60°
+	        LL_GPIO_ResetOutputPin(GPIOE, LL_GPIO_PIN_6); // Фаза C: НИЗ
+	        break;
+
+	      case 2: // 120°
+	        LL_GPIO_SetOutputPin(GPIOE, LL_GPIO_PIN_5);   // Фаза B: ВВЕРХ (Захват нуля B!)
+	        break;
+
+	      case 3: // 180°
+	        LL_GPIO_ResetOutputPin(GPIOE, LL_GPIO_PIN_4); // Фаза А: НИЗ
+	        break;
+
+	      case 4: // 240°
+	        LL_GPIO_SetOutputPin(GPIOE, LL_GPIO_PIN_6);   // Фаза C: ВВЕРХ (Захват нуля C!)
+	        break;
+
+	      case 5: // 300°
+	        LL_GPIO_ResetOutputPin(GPIOE, LL_GPIO_PIN_5); // Фаза B: НИЗ
+	        break;
+	    }
+
+	    step = (step + 1) % 6; // Циклический счетчик шагов коммутации моста
+	  }
+
+  /* USER CODE END TIM6_DAC_IRQn 0 */
+  /* USER CODE BEGIN TIM6_DAC_IRQn 1 */
+
+  /* USER CODE END TIM6_DAC_IRQn 1 */
 }
 
 /**

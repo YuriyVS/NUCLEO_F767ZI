@@ -1,0 +1,13 @@
+../Drivers/CMSIS/Include/core_cm7.h:1884:26:__NVIC_GetPriorityGrouping	1
+../Drivers/CMSIS/Include/core_cm7.h:1896:22:__NVIC_EnableIRQ	2
+../Drivers/CMSIS/Include/core_cm7.h:2024:22:__NVIC_SetPriority	2
+../Drivers/CMSIS/Include/core_cm7.h:2071:26:NVIC_EncodePriority	2
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h:1313:22:LL_TIM_EnableCounter	1
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h:4123:22:LL_TIM_EnableIT_CC1	1
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h:4189:22:LL_TIM_EnableIT_CC3	1
+../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h:4222:22:LL_TIM_EnableIT_CC4	1
+../Core/Src/Block_Synhro.c:10:6:MX_SyncTimers_NVIC_Init	1
+../Core/Src/Block_Synhro.c:32:6:MX_SyncTimers_Start	1
+../Core/Src/Block_Synhro.c:57:6:Sync_Process_Phase	1
+../Core/Src/Block_Synhro.c:83:6:Sync_Watchdog_Check	4
+../Core/Src/Block_Synhro.c:104:6:Sync_CheckSequence	13
