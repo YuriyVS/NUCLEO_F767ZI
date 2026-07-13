@@ -199,6 +199,10 @@ void SysTick_Handler(void)
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
+  // Проверяем состояние фаз каждую миллисекунду
+    Sync_Watchdog_Check();
+  // проверяем чередование и формируем сигнал готовности сети
+  //  Sync_CheckSequence();
 
   /* USER CODE END SysTick_IRQn 1 */
 }
@@ -427,5 +431,294 @@ void DMA2_Stream0_IRQHandler(void)
     AI_Accumulate(aADCxConvertedData);
   }
 }
+
+/**
+  * @brief Фаза А (TIM3, вход PA6)
+  */
+void TIM3_IRQHandler(void)
+{
+  if (LL_TIM_IsActiveFlag_CC1(TIM3))
+  {
+    LL_TIM_ClearFlag_CC1(TIM3);
+    uint32_t capture = LL_TIM_IC_GetCaptureCH1(TIM3);
+
+    // Вызов общей логики
+    PhaseA.GlobalCapture = DWT->CYCCNT;
+    Sync_Process_Phase(&PhaseA, capture);
+
+    // Расчет и установка Output Compare (УИ1 и УИ4)
+    if (DBMain.b64.EnableSifu == 0){
+    	Sifu_DisableYI14();
+        float ticks_per_degree = PhaseA.PeriodFiltered / 360.0f;
+        uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
+        uint32_t half_period = (uint32_t)(PhaseA.PeriodFiltered / 2.0f);
+
+        LL_TIM_OC_SetCompareCH2(TIM3, PhaseA.T_zero + alpha_ticks);              // УИ1 (PA7)
+        LL_TIM_OC_SetCompareCH3(TIM3, PhaseA.T_zero + alpha_ticks + half_period); // УИ4 (PB0)
+    }
+    else{
+    	if(DBMain.b96.EnableSifuOld==0){
+    		CalculateNextImpuls(1);
+    	}
+
+    }
+    DBMain.b96.EnableSifuOld = DBMain.b64.EnableSifu;
+
+  }
+  /* === 2. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 2 (УИ1 - PA7) === */
+  if (LL_TIM_IsActiveFlag_CC2(TIM3))
+  {
+      LL_TIM_ClearFlag_CC2(TIM3); // Обязательный сброс
+      //Берем текущее значение, при котором сработало прерывание
+      uint32_t current_ccr = LL_TIM_OC_GetCompareCH2(TIM3);
+      if(DBMain.b96.PulseStage1==1){
+    	  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_4); // УИ1
+    	  LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_15); // УИ6
+    	  Sifu_DisableYI1();
+    	  DBMain.b96.PulseStage1=0;
+      }
+      else
+      {
+      if (DBMain.b64.EnableSifu == 1) {
+    	  Generate_Thyristor_Pulse(1, current_ccr);
+      }
+      else
+      {
+    	  Generate_Thyristor_Pulse(0, current_ccr);
+      }
+      //Process_Analog_Measurements();
+      //ProtectSystem();
+      //TehnologSystem();
+      //RegulationSystem();
+      CalculateNextImpuls(2);
+      }
+  }
+  /* === 3. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 3 (УИ4 - PB0) === */
+  if (LL_TIM_IsActiveFlag_CC3(TIM3))
+  {
+      LL_TIM_ClearFlag_CC3(TIM3);
+      uint32_t current_ccr = LL_TIM_OC_GetCompareCH3(TIM3);
+      if(DBMain.b96.PulseStage4==1){
+    	  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_5); // УИ4
+    	  LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_13); // УИ3
+    	  Sifu_DisableYI4();
+    	  DBMain.b96.PulseStage4=0;
+      }
+      else
+      {
+      if (DBMain.b64.EnableSifu == 1) {
+    	  Generate_Thyristor_Pulse(4, current_ccr);
+      }
+      else
+      {
+    	  Generate_Thyristor_Pulse(0, current_ccr);
+      }
+      //Process_Analog_Measurements();
+      //ProtectSystem();
+      //TehnologSystem();
+      //RegulationSystem();
+      CalculateNextImpuls(5);
+      }
+  }
+}
+/**
+  * @brief Фаза B (TIM4, вход PD14)
+  */
+void TIM4_IRQHandler(void)
+{
+  if (LL_TIM_IsActiveFlag_CC3(TIM4))
+  {
+    LL_TIM_ClearFlag_CC3(TIM4);
+    uint32_t capture = LL_TIM_IC_GetCaptureCH3(TIM4);
+
+    PhaseB.GlobalCapture = DWT->CYCCNT;
+    deltaAB = PhaseB.GlobalCapture - PhaseA.GlobalCapture;
+    angleAB = (float)deltaAB * 360.0f / period;
+    Sync_Process_Phase(&PhaseB, capture);
+
+    if (DBMain.b64.EnableSifu == 0){
+    	Sifu_DisableYI36();
+        float ticks_per_degree = PhaseB.PeriodFiltered / 360.0f;
+        uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
+        uint32_t half_period = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
+
+        LL_TIM_OC_SetCompareCH2(TIM4, PhaseB.T_zero + alpha_ticks);              // УИ3 (PD13)
+        LL_TIM_OC_SetCompareCH4(TIM4, PhaseB.T_zero + alpha_ticks + half_period); // УИ6 (PD15)
+    }
+    else{
+        	if(DBMain.b96.EnableSifuOld==0){
+        		CalculateNextImpuls(3);
+
+        	}
+
+    }
+    DBMain.b96.EnableSifuOld = DBMain.b64.EnableSifu;
+
+  }
+  /* === 2. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 2 (УИ3 - PD13) === */
+  if (LL_TIM_IsActiveFlag_CC2(TIM4))
+  {
+        LL_TIM_ClearFlag_CC2(TIM4); //
+        uint32_t current_ccr = LL_TIM_OC_GetCompareCH2(TIM4);
+        if(DBMain.b96.PulseStage3==1){
+          LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_13); // УИ3
+      	  LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_7);  // УИ2
+      	  Sifu_DisableYI3();
+      	  DBMain.b96.PulseStage3=0;
+        }
+        else
+        {
+        if (DBMain.b64.EnableSifu == 1) {
+        	Generate_Thyristor_Pulse(3, current_ccr);
+        }
+        else
+        {
+      	  Generate_Thyristor_Pulse(0, current_ccr);
+        }
+        //Process_Analog_Measurements();
+        //ProtectSystem();
+        //TehnologSystem();
+        //RegulationSystem();
+        CalculateNextImpuls(4);
+        }
+  }
+  /* === 3. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 4 (УИ6 - PD15) === */
+  if (LL_TIM_IsActiveFlag_CC4(TIM4))
+  {
+        LL_TIM_ClearFlag_CC4(TIM4);
+        uint32_t current_ccr = LL_TIM_OC_GetCompareCH4(TIM4);
+        if(DBMain.b96.PulseStage6==1){
+      	  LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_15); // УИ6
+      	  LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_6);  // УИ5
+      	  Sifu_DisableYI6();
+      	  DBMain.b96.PulseStage6=0;
+        }
+        else
+        {
+        if (DBMain.b64.EnableSifu == 1) {
+        	Generate_Thyristor_Pulse(6, current_ccr);
+        }
+        else
+        {
+      	  Generate_Thyristor_Pulse(0, current_ccr);
+        }
+        //Process_Analog_Measurements();
+        //ProtectSystem();
+        //TehnologSystem();
+        //RegulationSystem();
+        CalculateNextImpuls(1);
+        }
+  }
+}
+/**
+  * @brief Фаза C (TIM8, вход PC9)
+  */
+void TIM8_CC_IRQHandler(void)
+{
+  if (LL_TIM_IsActiveFlag_CC4(TIM8))
+  {
+    LL_TIM_ClearFlag_CC4(TIM8);
+    uint32_t capture = LL_TIM_IC_GetCaptureCH4(TIM8);
+
+    PhaseC.GlobalCapture = DWT->CYCCNT;
+    deltaAC = PhaseC.GlobalCapture - PhaseA.GlobalCapture;
+    angleAC = (float)deltaAC * 360.0f / period;
+    Sync_Process_Phase(&PhaseC, capture);
+
+    if (DBMain.b64.EnableSifu == 0){
+    	Sifu_DisableYI52();
+        float ticks_per_degree = PhaseC.PeriodFiltered / 360.0f;
+        uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
+        uint32_t half_period = (uint32_t)(PhaseC.PeriodFiltered / 2.0f);
+
+        LL_TIM_OC_SetCompareCH1(TIM8, PhaseC.T_zero + alpha_ticks);              // УИ5 (PC6)
+        LL_TIM_OC_SetCompareCH2(TIM8, PhaseC.T_zero + alpha_ticks + half_period); // УИ2 (PC7)
+    }
+    else{
+        	if(DBMain.b96.EnableSifuOld==0){
+        		CalculateNextImpuls(5);
+        	}
+
+    }
+    DBMain.b96.EnableSifuOld = DBMain.b64.EnableSifu;
+  }
+  /* === 2. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 1 (УИ5 - PC6) === */
+  if (LL_TIM_IsActiveFlag_CC1(TIM8))
+  {
+          LL_TIM_ClearFlag_CC1(TIM8); //
+          uint32_t current_ccr = LL_TIM_OC_GetCompareCH1(TIM8);
+          if(DBMain.b96.PulseStage5==1){
+        	  LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_6);  // УИ5
+        	  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_5); // УИ4
+        	  Sifu_DisableYI5();
+        	  DBMain.b96.PulseStage5=0;
+          }
+          else
+          {
+          if (DBMain.b64.EnableSifu == 1) {
+        	  Generate_Thyristor_Pulse(5, current_ccr);
+          }
+          else
+          {
+        	  Generate_Thyristor_Pulse(0, current_ccr);
+          }
+          //Process_Analog_Measurements();
+          //ProtectSystem();
+          //TehnologSystem();
+          //RegulationSystem();
+          CalculateNextImpuls(6);
+          }
+  }
+  /* === 3. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 2 (УИ2 - PC7) === */
+  if (LL_TIM_IsActiveFlag_CC2(TIM8))
+  {
+          LL_TIM_ClearFlag_CC2(TIM8);
+          uint32_t current_ccr = LL_TIM_OC_GetCompareCH2(TIM8);
+          if(DBMain.b96.PulseStage2==1){
+        	  LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_7);  // УИ2
+        	  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_4); // УИ1
+        	  Sifu_DisableYI2();
+        	  DBMain.b96.PulseStage2=0;
+          }
+          else
+          {
+          if (DBMain.b64.EnableSifu == 1) {
+        	  Generate_Thyristor_Pulse(2, current_ccr);
+          }
+          else
+          {
+        	  Generate_Thyristor_Pulse(0, current_ccr);
+          }
+          //Process_Analog_Measurements();
+          //ProtectSystem();
+          //TehnologSystem();
+          //RegulationSystem();
+          CalculateNextImpuls(3);
+          }
+  }
+
+  /* === КОРЕННАЯ ЗАЧИСТКА ХВОСТОВ === */
+    // Если прерывание вызвано не обработанным флагом (например CC3),
+    // эта строчка принудительно его погасит и не даст процессору зависнуть.
+  //  TIM8->SR = ~(TIM_SR_CC1IF | TIM_SR_CC2IF | TIM_SR_CC3IF | TIM_SR_CC4IF | TIM_SR_CC1OF | TIM_SR_CC2OF | TIM_SR_CC3OF | TIM_SR_CC4OF);
+
+}
+
+void TIM7_IRQHandler(void)
+{
+    if (LL_TIM_IsActiveFlag_UPDATE(TIM7))
+    {
+        LL_TIM_ClearFlag_UPDATE(TIM7);
+
+        // Мгновенный сброс всех пинов УИ в 0
+        LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_4); // УИ1
+        LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_5); // УИ4
+        LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_13); // УИ3
+        LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_15); // УИ6
+        LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_6);  // УИ5
+        LL_GPIO_ResetOutputPin(GPIOC, LL_GPIO_PIN_7);  // УИ2
+    }
+}
+
 
 /* USER CODE END 1 */

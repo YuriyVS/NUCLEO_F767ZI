@@ -19,6 +19,8 @@ typedef struct {
 } PhaseSync_t;
 
 extern PhaseSync_t PhaseA, PhaseB, PhaseC;
+extern uint32_t deltaAB, deltaAC;
+extern float angleAB, angleAC, period;
 extern void Sync_Process_Phase(PhaseSync_t *phase, uint32_t capture);
 extern void Sync_Watchdog_Check(void);
 extern void Sync_CheckSequence(void);

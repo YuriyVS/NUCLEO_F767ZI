@@ -228,6 +228,10 @@ int main(void)
   __HAL_DMA_DISABLE_IT(&hdma_usart3_rx, DMA_IT_HT); // Вимикаємо переривання Half Transfer
   // Запуск для ESP32-C3
     HAL_UARTEx_ReceiveToIdle_DMA(&huart6, rx_buf_usart6, sizeof(rx_buf_usart6));
+    /* --- БЛОК СИНХРОНИЗАЦИИ --- */
+    MX_SyncTimers_NVIC_Init(); // Настраиваем приоритеты NVIC
+    MX_SyncTimers_Start();  // Включаем прерывания в регистрах таймеров
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -280,9 +284,15 @@ int main(void)
   DI_Timer = HAL_GetTick();
   new_tick_ai = DWT->CYCCNT;
   last_tick_ai = new_tick_ai;
+  float K = (float)(TIM3->PSC + 1);
+
+      // 2. Проверка чередования фаз
+      // Берем текущий период Фазы А как эталон (360 градусов)
+      period = 20000 * K;
+
   while (1)
   {
-	      if(filterDI){
+	  	  if(filterDI){
 	    	  if (HAL_GetTick() - DI_Timer >= 1) {
 	    	  	      DI_Timer +=1;//DI_Timer = HAL_GetTick();
 	    	          Read_DI_Input_Filtered(); // Выполняется в основном потоке раз в 1 мс
@@ -350,7 +360,9 @@ int main(void)
 	    	  new_tick_ai = DWT->CYCCNT;
 	       if (new_tick_ai - last_tick_ai >= 316800)
 	       {
-	    	  //last_tick_ai = new_tick_ai;
+	    	   // проверяем чередование и формируем сигнал готовности сети
+	    	   	      Sync_CheckSequence();
+	    	   //last_tick_ai = new_tick_ai;
 	    	  delta_ai = new_tick_ai - last_tick_ai;
 	    	  if(delta_ai < min)min = delta_ai;
 	    	  if(delta_ai > max)max = delta_ai;
@@ -813,7 +825,7 @@ static void MX_TIM3_Init(void)
   /* USER CODE BEGIN TIM3_Init 1 */
 
   /* USER CODE END TIM3_Init 1 */
-  TIM_InitStruct.Prescaler = 0;
+  TIM_InitStruct.Prescaler = 95;
   TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
   TIM_InitStruct.Autoreload = 65535;
   TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
@@ -876,7 +888,7 @@ static void MX_TIM4_Init(void)
   /* USER CODE BEGIN TIM4_Init 1 */
 
   /* USER CODE END TIM4_Init 1 */
-  TIM_InitStruct.Prescaler = 0;
+  TIM_InitStruct.Prescaler = 95;
   TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
   TIM_InitStruct.Autoreload = 65535;
   TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
@@ -961,7 +973,7 @@ static void MX_TIM7_Init(void)
   /* USER CODE BEGIN TIM7_Init 1 */
 
   /* USER CODE END TIM7_Init 1 */
-  TIM_InitStruct.Prescaler = 0;
+  TIM_InitStruct.Prescaler = 95;
   TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
   TIM_InitStruct.Autoreload = 65535;
   LL_TIM_Init(TIM7, &TIM_InitStruct);
@@ -969,6 +981,30 @@ static void MX_TIM7_Init(void)
   LL_TIM_SetTriggerOutput(TIM7, LL_TIM_TRGO_RESET);
   LL_TIM_DisableMasterSlaveMode(TIM7);
   /* USER CODE BEGIN TIM7_Init 2 */
+  /* 1. Включаем тактирование шины APB1 */
+    LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM7);
+
+    /* 2. Настройка частоты: 1 тик = 1 мксек при тактировании 108 МГц */
+    TIM_InitStruct.Prescaler = 107;
+    TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
+
+    /* 3. Период: 500 тиков = 550 мксек */
+    TIM_InitStruct.Autoreload = 549;
+
+    LL_TIM_Init(TIM7, &TIM_InitStruct);
+
+    /* 4. Настройки для СИФУ */
+    LL_TIM_DisableARRPreload(TIM7);
+
+    // Режим одного импульса (таймер сам остановится после 500 мксек)
+    LL_TIM_SetOnePulseMode(TIM7, LL_TIM_ONEPULSEMODE_SINGLE);
+
+    // Разрешаем прерывание по окончании счета
+    LL_TIM_EnableIT_UPDATE(TIM7);
+
+    /* 5. Настройка приоритета в NVIC (должен быть ниже, чем у TIM3,4,8) */
+    NVIC_SetPriority(TIM7_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 5, 0));
+    NVIC_EnableIRQ(TIM7_IRQn);
 
   /* USER CODE END TIM7_Init 2 */
 
@@ -1010,7 +1046,7 @@ static void MX_TIM8_Init(void)
   /* USER CODE BEGIN TIM8_Init 1 */
 
   /* USER CODE END TIM8_Init 1 */
-  TIM_InitStruct.Prescaler = 0;
+  TIM_InitStruct.Prescaler = 95;
   TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
   TIM_InitStruct.Autoreload = 65535;
   TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;

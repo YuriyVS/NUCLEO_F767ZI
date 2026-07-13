@@ -2,6 +2,8 @@
 #include "Block_Synhro.h"
 
 PhaseSync_t PhaseA, PhaseB, PhaseC;
+uint32_t deltaAB, deltaAC;
+float angleAB, angleAC, period;
 
 /**
   * @brief Настройка приоритетов прерываний для блока синхронизации СИФУ (LL)
@@ -31,7 +33,17 @@ void MX_SyncTimers_NVIC_Init(void)
 
 void MX_SyncTimers_Start(void)
 {
-  /* Включаем прерывания по захвату (Input Capture) для конкретных каналов */
+	/* === 1. АППАРАТНО ВКЛЮЧАЕМ САМИ КАНАЛЫ ЗАХВАТА (Этого не хватало!) === */
+	  LL_TIM_CC_EnableChannel(TIM3, LL_TIM_CHANNEL_CH1); // Включаем входной канал 1 (Фаза А)
+	  LL_TIM_CC_EnableChannel(TIM4, LL_TIM_CHANNEL_CH3); // Включаем входной канал 3 (Фаза B)
+	  LL_TIM_CC_EnableChannel(TIM8, LL_TIM_CHANNEL_CH4); // Включаем входной канал 4 (Фаза C)
+
+	  /* 2. Принудительно очищаем флаги перед стартом */
+	  LL_TIM_ClearFlag_CC1(TIM3);
+	  LL_TIM_ClearFlag_CC3(TIM4);
+	  LL_TIM_ClearFlag_CC4(TIM8);
+
+	/* Включаем прерывания по захвату (Input Capture) для конкретных каналов */
 
   LL_TIM_EnableIT_CC1(TIM3); // Канал 1 для фазы А (PA6)
   LL_TIM_EnableIT_CC3(TIM4); // Канал 3 для фазы B (PD14)
@@ -57,7 +69,25 @@ void MX_SyncTimers_Start(void)
 void Sync_Process_Phase(PhaseSync_t *phase, uint32_t capture)
 {
     // 1. Расчет сырого периода (uint32_t корректно считает разницу при переполнении)
-    uint32_t raw_period = capture - phase->LastCapture;
+	//uint16_t raw_period = (uint16_t)(capture - phase->LastCapture);
+	//uint32_t raw_period = capture - phase->LastCapture;
+	uint32_t raw_period;
+
+	if (capture >= phase->LastCapture)
+	{
+	    // Сценарий А: Обычный расчет внутри одного круга счетчика таймера.
+	    // Например: capture = 25000, LastCapture = 5000.
+	    // raw_period = 25000 - 5000 = 20000 мкс.
+	    raw_period = capture - phase->LastCapture;
+	}
+	else
+	{
+	    // Сценарий Б: Таймер успел дойти до 65535, обнулился и пошел считать заново.
+	    // Например: capture = 14464, LastCapture = 60000.
+	    // 65536 - 60000 = 5536 тиков (столько таймер дорасчитывал до нуля).
+	    // 5536 + 14464 = 20000 мкс (полный период).
+	    raw_period = (65536 - phase->LastCapture) + capture;
+	}
     phase->LastCapture = capture;
 
     // 2. EMA фильтрация периода (согласно требованиям Р50.8)
@@ -69,7 +99,7 @@ void Sync_Process_Phase(PhaseSync_t *phase, uint32_t capture)
     float ticks_per_degree = phase->PeriodFiltered / 360.0f;
     uint32_t t_phasing = (uint32_t)(ticks_per_degree * DBParameters.f100.P50_5);
     phase->T_zero = capture + t_phasing;
-    phase->T_Pulse_width = (uint32_t)(ticks_per_degree * DBParameters.f100.P50_4);
+    phase->T_Pulse_width = (uint32_t)(DBParameters.f100.P50_4);
 
     // 4. Сброс Watchdog и флага потери фазы
     phase->WatchdogTimer = 0;
@@ -114,32 +144,38 @@ void Sync_CheckSequence(void)
            PeriodFiltered (в тиках таймера) в тики DWT.
            K = F_cpu / F_timer (например, 216МГц / 100кГц = 2160)
     */
-    float F_cpu = (float)HAL_RCC_GetHCLKFreq();
-    float F_tim = (float)(HAL_RCC_GetPCLK1Freq() * 2); // Обычно частота таймеров в 2 раза выше PCLK
-    float K = F_cpu / F_tim;
-
-    // 2. Проверка чередования фаз
-    // Берем текущий период Фазы А как эталон (360 градусов)
-    float period = PhaseA.PeriodFiltered * K;
-    if (period < 1.0f) return; // Защита от деления на 0
+//    float F_cpu = (float)HAL_RCC_GetHCLKFreq();
+//    float F_tim = (float)(HAL_RCC_GetPCLK1Freq() * 2); // Обычно частота таймеров в 2 раза выше PCLK
+//    float K = F_cpu / F_tim;
+    /* ИСПРАВЛЕНИЕ: Так как частоты CPU и входная частота таймера TIM3 равны (96 МГц),
+           а сам счетчик таймера делит эту частоту на (Prescaler + 1), то один тик таймера
+           физически равен ровно (TIM3->PSC + 1) тактам процессора DWT->CYCCNT.
+           Для PSC = 95 коэффициент K станет идеально равен 96.0f.
+        */
+//        float K = (float)(TIM3->PSC + 1);
+//
+//    // 2. Проверка чередования фаз
+//    // Берем текущий период Фазы А как эталон (360 градусов)
+//    period = PhaseA.PeriodFiltered * K;
+//    if (period < 1.0f) return; // Защита от деления на 0
 
     /* Рассчитываем разницу во времени между захватами.
        Важно: используем беззнаковую арифметику uint32_t для корректности при переполнении.
     */
-    uint32_t deltaAB = PhaseB.GlobalCapture - PhaseA.GlobalCapture;
-    uint32_t deltaAC = PhaseC.GlobalCapture - PhaseA.GlobalCapture;
+    //deltaAB = PhaseB.GlobalCapture - PhaseA.GlobalCapture;
+    //deltaAC = PhaseC.GlobalCapture - PhaseA.GlobalCapture;
 
     // Переводим разницу в электрические градусы
-    float angleAB = (float)deltaAB * 360.0f / period;
-    float angleAC = (float)deltaAC * 360.0f / period;
+    //angleAB = (float)deltaAB * 360.0f / period;
+    //angleAC = (float)deltaAC * 360.0f / period;
 
     /* Нормализация углов (чтобы они всегда были в диапазоне 0..360)
        Это нужно, если захват Фазы А произошел чуть позже захвата B или C в текущем цикле.
     */
-    while (angleAB < 0)   angleAB += 360.0f;
-    while (angleAB >= 360.0f) angleAB -= 360.0f;
-    while (angleAC < 0)   angleAC += 360.0f;
-    while (angleAC >= 360.0f) angleAC -= 360.0f;
+//    while (angleAB < 0)   angleAB += 360.0f;
+//    while (angleAB >= 360.0f) angleAB -= 360.0f;
+//    while (angleAC < 0)   angleAC += 360.0f;
+//    while (angleAC >= 360.0f) angleAC -= 360.0f;
 
     /* Проверка условий:
        - Для ABC: угол AB должен быть ~120, AC ~240.

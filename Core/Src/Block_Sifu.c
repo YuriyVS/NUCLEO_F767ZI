@@ -14,7 +14,7 @@ void Generate_Thyristor_Pulse(uint8_t pulse_num, uint32_t current_ccr){
 	switch(pulse_num) {
 	        case 1:
 	            // УИ1 основной (PA7), УИ6 подтверждающий
-	            LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_7); // УИ1
+	            LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_4); // УИ1
 	            LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_15); // УИ6
 	            Sifu_DisableYI(pulse_num);
 	            Sifu_StartPulseWidth();
@@ -26,7 +26,7 @@ void Generate_Thyristor_Pulse(uint8_t pulse_num, uint32_t current_ccr){
 	        case 2:
 	            // УИ2 основной, УИ1 подтверждающий
 	            LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_7);  // УИ2
-	            LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_7); // УИ1
+	            LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_4); // УИ1
 	            Sifu_DisableYI(pulse_num);
 	            Sifu_StartPulseWidth();
 	            //DBMain.b96.PulseStage2 = 1;
@@ -47,7 +47,7 @@ void Generate_Thyristor_Pulse(uint8_t pulse_num, uint32_t current_ccr){
 	            break;
 	        case 4:
 	            // УИ4 основной, УИ3 подтверждающий
-	            LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_0); // УИ4
+	            LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_5); // УИ4
 	        	LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_13); // УИ3
 	            Sifu_DisableYI(pulse_num);
 	            Sifu_StartPulseWidth();
@@ -59,7 +59,7 @@ void Generate_Thyristor_Pulse(uint8_t pulse_num, uint32_t current_ccr){
 	        case 5:
 	            // УИ5 основной, УИ4 подтверждающий
 	        	LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_6);  // УИ5
-	        	LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_0); // УИ4
+	        	LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_5); // УИ4
 	            Sifu_DisableYI(pulse_num);
 	            Sifu_StartPulseWidth();
 	            //DBMain.b96.PulseStage5 = 1;
@@ -81,8 +81,8 @@ void Generate_Thyristor_Pulse(uint8_t pulse_num, uint32_t current_ccr){
 	        default:
 	        	  // Принудительный сброс физических уровней на всех пинах УИ в 0 (аппаратная блокировка)
 	        	  // Группа Фазы А
-	        	  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_7); // УИ1
-	        	  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_0); // УИ4
+	        	  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_4); // УИ1
+	        	  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_5); // УИ4
 
 	        	  // Группа Фазы B
 	        	  LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_13); // УИ3
@@ -263,8 +263,8 @@ void Sifu_DisableAll(void)
 
   // 2. Принудительный сброс физических уровней на всех пинах УИ в 0 (аппаратная блокировка)
   // Группа Фазы А
-  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_7); // УИ1
-  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_0); // УИ4
+  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_4); // УИ1
+  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_5); // УИ4
 
   // Группа Фазы B
   LL_GPIO_ResetOutputPin(GPIOD, LL_GPIO_PIN_13); // УИ3
@@ -282,8 +282,8 @@ void Sifu_DisableYI14(void){
 	  LL_TIM_DisableIT_CC3(TIM3); // УИ4
 	  // 2. Принудительный сброс физических уровней на всех пинах УИ в 0 (аппаратная блокировка)
 	  // Группа Фазы А
-	  LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_7); // УИ1
-	  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_0); // УИ4
+	  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_4); // УИ1
+	  LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_5); // УИ4
 }
 
 void Sifu_DisableYI36(void){
