@@ -4,6 +4,9 @@
 PhaseSync_t PhaseA, PhaseB, PhaseC;
 uint32_t deltaAB, deltaAC;
 float angleAB, angleAC, period;
+uint32_t ccr1_raw, ccr4_raw, current_ccr1, current_ccr4, ccr_raw;
+uint32_t ccr3_raw, ccr6_raw, current_ccr3, current_ccr6;
+uint32_t ccr5_raw, ccr2_raw, current_ccr5, current_ccr2;
 
 /**
   * @brief Настройка приоритетов прерываний для блока синхронизации СИФУ (LL)
@@ -34,9 +37,9 @@ void MX_SyncTimers_NVIC_Init(void)
 void MX_SyncTimers_Start(void)
 {
 	/* === 1. АППАРАТНО ВКЛЮЧАЕМ САМИ КАНАЛЫ ЗАХВАТА (Этого не хватало!) === */
-	  LL_TIM_CC_EnableChannel(TIM3, LL_TIM_CHANNEL_CH1); // Включаем входной канал 1 (Фаза А)
-	  LL_TIM_CC_EnableChannel(TIM4, LL_TIM_CHANNEL_CH3); // Включаем входной канал 3 (Фаза B)
-	  LL_TIM_CC_EnableChannel(TIM8, LL_TIM_CHANNEL_CH4); // Включаем входной канал 4 (Фаза C)
+	  LL_TIM_CC_EnableChannel(TIM3, LL_TIM_CHANNEL_CH1 | LL_TIM_CHANNEL_CH2 | LL_TIM_CHANNEL_CH3); // Включаем входной канал 1 (Фаза А)
+	  LL_TIM_CC_EnableChannel(TIM4, LL_TIM_CHANNEL_CH3 | LL_TIM_CHANNEL_CH2 | LL_TIM_CHANNEL_CH4); // Включаем входной канал 3 (Фаза B)
+	  LL_TIM_CC_EnableChannel(TIM8, LL_TIM_CHANNEL_CH4 | LL_TIM_CHANNEL_CH1 | LL_TIM_CHANNEL_CH2); // Включаем входной канал 4 (Фаза C)
 
 	  /* 2. Принудительно очищаем флаги перед стартом */
 	  LL_TIM_ClearFlag_CC1(TIM3);

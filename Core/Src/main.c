@@ -289,6 +289,18 @@ int main(void)
       // 2. Проверка чередования фаз
       // Берем текущий период Фазы А как эталон (360 градусов)
       period = 20000 * K;
+      ccr1_raw=0;
+      ccr2_raw=0;
+      ccr3_raw=0;
+      ccr4_raw=0;
+      ccr5_raw=0;
+      ccr6_raw=0;
+      current_ccr1=0;
+      current_ccr2=0;
+      current_ccr3=0;
+      current_ccr4=0;
+      current_ccr5=0;
+      current_ccr6=0;
 
   while (1)
   {

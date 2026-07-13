@@ -16,7 +16,7 @@ void Generate_Thyristor_Pulse(uint8_t pulse_num, uint32_t current_ccr){
 	            // УИ1 основной (PA7), УИ6 подтверждающий
 	            LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_4); // УИ1
 	            LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_15); // УИ6
-	            Sifu_DisableYI(pulse_num);
+//	            Sifu_DisableYI(pulse_num);
 	            Sifu_StartPulseWidth();
 	            //DBMain.b96.PulseStage1 = 1;
 	            //DBMain.b96.PulseStage6 = 1;
@@ -27,7 +27,7 @@ void Generate_Thyristor_Pulse(uint8_t pulse_num, uint32_t current_ccr){
 	            // УИ2 основной, УИ1 подтверждающий
 	            LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_7);  // УИ2
 	            LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_4); // УИ1
-	            Sifu_DisableYI(pulse_num);
+//	            Sifu_DisableYI(pulse_num);
 	            Sifu_StartPulseWidth();
 	            //DBMain.b96.PulseStage2 = 1;
 	            //DBMain.b96.PulseStage1 = 1;
@@ -38,7 +38,7 @@ void Generate_Thyristor_Pulse(uint8_t pulse_num, uint32_t current_ccr){
 	            // УИ3 основной, УИ2 подтверждающий
 	           	LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_13); // УИ3
 	        	LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_7);  // УИ2
-	            Sifu_DisableYI(pulse_num);
+	            //Sifu_DisableYI(pulse_num);
 	            Sifu_StartPulseWidth();
 	            //DBMain.b96.PulseStage3 = 1;
 	            //DBMain.b96.PulseStage2 = 1;
@@ -49,7 +49,7 @@ void Generate_Thyristor_Pulse(uint8_t pulse_num, uint32_t current_ccr){
 	            // УИ4 основной, УИ3 подтверждающий
 	            LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_5); // УИ4
 	        	LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_13); // УИ3
-	            Sifu_DisableYI(pulse_num);
+//	            Sifu_DisableYI(pulse_num);
 	            Sifu_StartPulseWidth();
 	            //DBMain.b96.PulseStage4 = 1;
 	            //DBMain.b96.PulseStage3 = 1;
@@ -60,7 +60,7 @@ void Generate_Thyristor_Pulse(uint8_t pulse_num, uint32_t current_ccr){
 	            // УИ5 основной, УИ4 подтверждающий
 	        	LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_6);  // УИ5
 	        	LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_5); // УИ4
-	            Sifu_DisableYI(pulse_num);
+//	            Sifu_DisableYI(pulse_num);
 	            Sifu_StartPulseWidth();
 	            //DBMain.b96.PulseStage5 = 1;
 	            //DBMain.b96.PulseStage4 = 1;
@@ -71,7 +71,7 @@ void Generate_Thyristor_Pulse(uint8_t pulse_num, uint32_t current_ccr){
 	            // УИ6 основной, УИ5 подтверждающий
 	        	LL_GPIO_SetOutputPin(GPIOD, LL_GPIO_PIN_15); // УИ6
 	        	LL_GPIO_SetOutputPin(GPIOC, LL_GPIO_PIN_6);  // УИ5
-	            Sifu_DisableYI(pulse_num);
+//	            Sifu_DisableYI(pulse_num);
 	            Sifu_StartPulseWidth();
 	            //DBMain.b96.PulseStage6 = 1;
 	            //DBMain.b96.PulseStage5 = 1;
@@ -351,8 +351,12 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	             ticks_per_degree = PhaseA.PeriodFiltered / 360.0f;
 	             alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	             //half_period = (uint32_t)(PhaseA.PeriodFiltered / 2.0f);
-
-	             LL_TIM_OC_SetCompareCH2(TIM3, PhaseA.T_zero + alpha_ticks);              // УИ1 (PA7)
+	             ccr_raw = PhaseA.T_zero + alpha_ticks;
+	             if (ccr_raw > 65535)
+	             {
+	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	             }
+	             LL_TIM_OC_SetCompareCH2(TIM3, ccr_raw);              // УИ1 (PA7)
 	            // LL_TIM_OC_SetCompareCH3(TIM3, PhaseA.T_zero + alpha_ticks + half_period); // УИ4 (PB0)
 	             Sifu_EnableYI(pulse_num);
 	            break;
@@ -360,17 +364,25 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	            ticks_per_degree = PhaseC.PeriodFiltered / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	            half_period = (uint32_t)(PhaseC.PeriodFiltered / 2.0f);
-
+	             ccr_raw = PhaseC.T_zero + alpha_ticks + half_period;
+	             if (ccr_raw > 65535)
+	             {
+	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	             }
 	            //LL_TIM_OC_SetCompareCH1(TIM8, PhaseC.T_zero + alpha_ticks);              // УИ5 (PC6)
-	            LL_TIM_OC_SetCompareCH2(TIM8, PhaseC.T_zero + alpha_ticks + half_period); // УИ2 (PC7)
+	            LL_TIM_OC_SetCompareCH2(TIM8, ccr_raw); // УИ2 (PC7)
 	            Sifu_EnableYI(pulse_num);
 	            break;
 	        case 3:
 	            ticks_per_degree = PhaseB.PeriodFiltered / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	            //half_period = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
-
-	            LL_TIM_OC_SetCompareCH2(TIM4, PhaseB.T_zero + alpha_ticks);              // УИ3 (PD13)
+	             ccr_raw = PhaseB.T_zero + alpha_ticks;
+	             if (ccr_raw > 65535)
+	             {
+	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	             }
+	            LL_TIM_OC_SetCompareCH2(TIM4, ccr_raw);              // УИ3 (PD13)
 	            //LL_TIM_OC_SetCompareCH4(TIM4, PhaseB.T_zero + alpha_ticks + half_period); // УИ6 (PD15)
 	            Sifu_EnableYI(pulse_num);
 	            break;
@@ -378,17 +390,25 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	            ticks_per_degree = PhaseA.PeriodFiltered / 360.0f;
 	             alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	             half_period = (uint32_t)(PhaseA.PeriodFiltered / 2.0f);
-
+	             ccr_raw = PhaseA.T_zero + alpha_ticks + half_period;
+	             if (ccr_raw > 65535)
+	             {
+	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	             }
 	            // LL_TIM_OC_SetCompareCH2(TIM3, PhaseA.T_zero + alpha_ticks);              // УИ1 (PA7)
-	             LL_TIM_OC_SetCompareCH3(TIM3, PhaseA.T_zero + alpha_ticks + half_period); // УИ4 (PB0)
+	             LL_TIM_OC_SetCompareCH3(TIM3, ccr_raw); // УИ4 (PB0)
 	             Sifu_EnableYI(pulse_num);
 	            break;
 	        case 5:
 	            ticks_per_degree = PhaseC.PeriodFiltered / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	           // uint32_t half_period = (uint32_t)(PhaseC.PeriodFiltered / 2.0f);
-
-	            LL_TIM_OC_SetCompareCH1(TIM8, PhaseC.T_zero + alpha_ticks);              // УИ5 (PC6)
+	             ccr_raw = PhaseC.T_zero + alpha_ticks;
+	             if (ccr_raw > 65535)
+	             {
+	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	             }
+	            LL_TIM_OC_SetCompareCH1(TIM8, ccr_raw);              // УИ5 (PC6)
 	           // LL_TIM_OC_SetCompareCH2(TIM8, PhaseC.T_zero + alpha_ticks + half_period); // УИ2 (PC7)
 	            Sifu_EnableYI(pulse_num);
 	            break;
@@ -396,9 +416,13 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	            ticks_per_degree = PhaseB.PeriodFiltered / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	            half_period = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
-
+	             ccr_raw = PhaseB.T_zero + alpha_ticks + half_period;
+	             if (ccr_raw > 65535)
+	             {
+	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	             }
 	            //LL_TIM_OC_SetCompareCH2(TIM4, PhaseB.T_zero + alpha_ticks);              // УИ3 (PD13)
-	            LL_TIM_OC_SetCompareCH4(TIM4, PhaseB.T_zero + alpha_ticks + half_period); // УИ6 (PD15)
+	            LL_TIM_OC_SetCompareCH4(TIM4, ccr_raw); // УИ6 (PD15)
 	            Sifu_EnableYI(pulse_num);
 	            break;
 	        default:
