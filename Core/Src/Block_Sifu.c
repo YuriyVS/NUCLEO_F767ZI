@@ -251,7 +251,14 @@ void Sifu_EnableYI6(void){
   */
 void Sifu_DisableAll(void)
 {
-  // 1. Запрещаем прерывания сравнения во всех таймерах (программная блокировка)
+	  LL_TIM_ClearFlag_CC2(TIM3);
+	  LL_TIM_ClearFlag_CC3(TIM3);
+	  LL_TIM_ClearFlag_CC2(TIM4);
+	  LL_TIM_ClearFlag_CC4(TIM4);
+	  LL_TIM_ClearFlag_CC1(TIM8);
+	  LL_TIM_ClearFlag_CC2(TIM8);
+
+	// 1. Запрещаем прерывания сравнения во всех таймерах (программная блокировка)
   LL_TIM_DisableIT_CC2(TIM3); // УИ1
   LL_TIM_DisableIT_CC3(TIM3); // УИ4
 
@@ -525,3 +532,91 @@ void Sifu_DisableYI(uint8_t pulse_num){
 		}
 
 }
+
+#define TRACE_DURATION_MS   100  // Длительность записи
+#define TRACE_SAMPLE_INT_MS 1    // Дискретность записи
+
+// Структура одного временного среза (кванта) отладки
+typedef struct {
+    uint32_t Tick;             // Системное время (HAL_GetTick())
+    uint16_t Tim3_Cnt;         // ТЕКУЩЕЕ ЗНАЧЕНИЕ СЧЕТЧИКА TIM3 (0...65535) <-- НАШ ПИНГ
+    uint8_t YiMask;            // Битовая маска состояний УИ1-УИ6 (Бит 0 = УИ1, ... Бит 5 = УИ6)
+
+    // Динамика углов (выборочно основные переменные из твоего списка для контроля)
+    uint16_t Ccr1_Raw;         // Текущая уставка канала сравнения Фазы А
+    uint16_t Ccr4_Raw;         // Текущая уставка канала сравнения Фазы А
+    uint16_t Ccr_Raw;         // Текущая уставка канала сравнения Фазы А
+    uint16_t cur_ccr1;         // Текущая уставка канала сравнения Фазы А
+    uint16_t cur_ccr4;         // Текущая уставка канала сравнения Фазы А
+
+    // Состояние фильтров частоты сети
+    uint16_t PeriodA_mks;      // Период фазы А в микросекундах
+    uint8_t FazaLoss_Mask;     // Битовая маска потери фаз (Бит0=A, Бит1=B, Бит2=C)
+} SifuTraceSample_t;
+
+// Управляющая структура регистратора
+typedef struct {
+    SifuTraceSample_t Buffer[TRACE_DURATION_MS];
+    uint32_t Index;            // Текущий указатель записи
+    uint8_t IsRunning;         // Флаг активности записи (1 - пишет, 0 - заморожен)
+    uint8_t IsBufferFull;      // Флаг заполнения (для кольцевого режима)
+} SifuDebugger_t;
+
+// Выделяем память в ОЗУ
+volatile SifuDebugger_t SifuLog;
+
+void Sifu_CaptureTraceSample(void)
+{
+    if (!SifuLog.IsRunning) return;
+
+    SifuTraceSample_t *sample = (SifuTraceSample_t *)&SifuLog.Buffer[SifuLog.Index];
+
+    // 1. Фиксируем время
+    sample->Tick = HAL_GetTick();
+    sample->Tim3_Cnt = (uint16_t)LL_TIM_GetCounter(TIM3); // Фиксируем текущий тик таймера TIM3
+
+    // 2. Упаковываем состояние выходов УИ1-УИ6 в байтовую маску
+    uint8_t mask = 0;
+    if (LL_GPIO_IsOutputPinSet(GPIOB, LL_GPIO_PIN_4))  mask |= (1 << 0); // Бит 0: УИ1
+    if (LL_GPIO_IsOutputPinSet(GPIOC, LL_GPIO_PIN_7))  mask |= (1 << 1); // Бит 1: УИ2
+    if (LL_GPIO_IsOutputPinSet(GPIOD, LL_GPIO_PIN_13)) mask |= (1 << 2); // Бит 2: УИ3
+    if (LL_GPIO_IsOutputPinSet(GPIOB, LL_GPIO_PIN_5))  mask |= (1 << 3); // Бит 3: УИ4
+    if (LL_GPIO_IsOutputPinSet(GPIOC, LL_GPIO_PIN_6))  mask |= (1 << 4); // Бит 4: УИ5
+    if (LL_GPIO_IsOutputPinSet(GPIOD, LL_GPIO_PIN_15)) mask |= (1 << 5); // Бит 5: УИ6
+    sample->YiMask = mask;
+
+    // 3. Сохраняем мгновенные значения важных переменных СИФУ
+    sample->Ccr1_Raw = (uint16_t)ccr1_raw;
+    sample->Ccr4_Raw = (uint16_t)ccr4_raw;
+    sample->Ccr_Raw = (uint16_t)ccr_raw;
+    sample->cur_ccr1 = (uint16_t)current_ccr1;
+    sample->cur_ccr4 = (uint16_t)current_ccr4;
+    sample->PeriodA_mks = (uint16_t)PhaseA.PeriodFiltered;
+
+    // 4. Упаковываем маску потери фаз
+    sample->FazaLoss_Mask = (PhaseA.FazaLoss << 0) | (PhaseB.FazaLoss << 1) | (PhaseC.FazaLoss << 2);
+
+    // 5. Инкремент циклического индекса
+    SifuLog.Index++;
+    if (SifuLog.Index >= TRACE_DURATION_MS)
+    {
+        SifuLog.Index = 0;
+        SifuLog.IsBufferFull = 1; // Заполнили первый круг
+    }
+}
+
+// Запуск регистратора (вызывать при инициализации СИФУ)
+void Sifu_TraceStart(void)
+{
+    SifuLog.Index = 0;
+    SifuLog.IsBufferFull = 0;
+    SifuLog.IsRunning = 1;
+}
+
+// Заморозка записи (вызывать при аварии или по условию)
+void Sifu_TraceFreeze(void)
+{
+    SifuLog.IsRunning = 0;
+}
+
+

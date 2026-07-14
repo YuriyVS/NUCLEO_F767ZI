@@ -30,4 +30,11 @@ extern void Sifu_DisableYI(uint8_t pulse_num);
 extern void CalculateNextImpuls(uint8_t pulse_num);
 extern void Sifu_StartPulseWidth(void);
 
+extern void Sifu_CaptureTraceSample(void);
+
+extern void Sifu_TraceStart(void);
+
+extern void Sifu_TraceFreeze(void);
+
+
 #endif

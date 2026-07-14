@@ -302,6 +302,8 @@ int main(void)
       current_ccr5=0;
       current_ccr6=0;
 
+
+
   while (1)
   {
 	  	  if(filterDI){

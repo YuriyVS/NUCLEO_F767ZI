@@ -203,6 +203,7 @@ void SysTick_Handler(void)
     Sync_Watchdog_Check();
   // проверяем чередование и формируем сигнал готовности сети
   //  Sync_CheckSequence();
+    Sifu_CaptureTraceSample();
 
   /* USER CODE END SysTick_IRQn 1 */
 }
@@ -446,7 +447,10 @@ void TIM3_IRQHandler(void)
     Sync_Process_Phase(&PhaseA, capture);
 //    DBMain.b64.EnableSifu = 0;
     // Расчет и установка Output Compare (УИ1 и УИ4)
-    if (DBMain.b64.EnableSifu == 0){
+//    if (DBMain.b64.EnableSifu == 0){
+////    	if(DBMain.b96.EnableSifuOld==1){
+////    	    		Sifu_TraceStart();}
+//    	Sifu_TraceFreeze();
 //        Sifu_DisableYI14();
         float ticks_per_degree = PhaseA.PeriodFiltered / 360.0f;
         uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
@@ -477,10 +481,17 @@ void TIM3_IRQHandler(void)
                 // 5. РАЗРЕШАЕМ ПРЕРЫВАНИЯ СРАВНЕНИЯ. Теперь они выстрелят строго вовремя!
                 LL_TIM_EnableIT_CC2(TIM3); // Включаем ожидание УИ1
                 LL_TIM_EnableIT_CC3(TIM3); // Включаем ожидание УИ4
+    if (DBMain.b64.EnableSifu == 0){
+//                    	if(DBMain.b96.EnableSifuOld==1){
+//                    	    		Sifu_TraceStart();}
+                    	Sifu_TraceFreeze();
     }
     else{
+//    	Sifu_TraceFreeze();
     	if(DBMain.b96.EnableSifuOld==0){
-    		CalculateNextImpuls(1);
+    		Sifu_TraceStart();
+//    		Sifu_DisableAll();
+//    		CalculateNextImpuls(1);
     	}
 
     }
@@ -518,9 +529,9 @@ void TIM3_IRQHandler(void)
       //ProtectSystem();
       //TehnologSystem();
       //RegulationSystem();
-      if (DBMain.b64.EnableSifu == 1) {
-          	  CalculateNextImpuls(2);
-                  }
+//      if (DBMain.b64.EnableSifu == 1) {
+//          	  CalculateNextImpuls(4);
+//                  }
 //      }
   }
   /* === 3. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 3 (УИ4 - PB0) === */
@@ -551,9 +562,9 @@ void TIM3_IRQHandler(void)
       //ProtectSystem();
       //TehnologSystem();
       //RegulationSystem();
-      if (DBMain.b64.EnableSifu == 1) {
-    	  CalculateNextImpuls(5);
-            }
+//      if (DBMain.b64.EnableSifu == 1) {
+//    	  CalculateNextImpuls(1);
+//            }
 //      }
   }
 }
@@ -572,8 +583,8 @@ void TIM4_IRQHandler(void)
     angleAB = (float)deltaAB * 360.0f / period;
     Sync_Process_Phase(&PhaseB, capture);
 
-    if (DBMain.b64.EnableSifu == 0){
-    	Sifu_DisableYI36();
+//    if (DBMain.b64.EnableSifu == 0){
+//    	Sifu_DisableYI36();
         float ticks_per_degree = PhaseB.PeriodFiltered / 360.0f;
         uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
         uint32_t half_period = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
@@ -597,15 +608,15 @@ void TIM4_IRQHandler(void)
         LL_TIM_OC_SetCompareCH4(TIM4, ccr6_raw); // УИ6 (PD15)
         Sifu_EnableYI3();
         Sifu_EnableYI6();
-    }
-    else{
-        	if(DBMain.b96.EnableSifuOld==0){
-        		CalculateNextImpuls(3);
-
-        	}
-
-    }
-    DBMain.b96.EnableSifuOld = DBMain.b64.EnableSifu;
+//    }
+//    else{
+////        	if(DBMain.b96.EnableSifuOld==0){
+////        		CalculateNextImpuls(3);
+////
+////        	}
+//
+//    }
+//    DBMain.b96.EnableSifuOld = DBMain.b64.EnableSifu;
 
   }
   /* === 2. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 2 (УИ3 - PD13) === */
@@ -633,9 +644,9 @@ void TIM4_IRQHandler(void)
         //ProtectSystem();
         //TehnologSystem();
         //RegulationSystem();
-        if (DBMain.b64.EnableSifu == 1) {
-            	  CalculateNextImpuls(4);
-                    }
+//        if (DBMain.b64.EnableSifu == 1) {
+//            	  CalculateNextImpuls(4);
+//                    }
 
 //        }
   }
@@ -664,9 +675,9 @@ void TIM4_IRQHandler(void)
         //ProtectSystem();
         //TehnologSystem();
         //RegulationSystem();
-        if (DBMain.b64.EnableSifu == 1) {
-      	  CalculateNextImpuls(1);
-              }
+//        if (DBMain.b64.EnableSifu == 1) {
+//      	  CalculateNextImpuls(1);
+//              }
 //        }
   }
 }
@@ -685,7 +696,7 @@ void TIM8_CC_IRQHandler(void)
     angleAC = (float)deltaAC * 360.0f / period;
     Sync_Process_Phase(&PhaseC, capture);
 
-    if (DBMain.b64.EnableSifu == 0){
+//    if (DBMain.b64.EnableSifu == 0){
 //    	Sifu_DisableYI52();
         float ticks_per_degree = PhaseC.PeriodFiltered / 360.0f;
         uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
@@ -709,14 +720,14 @@ void TIM8_CC_IRQHandler(void)
         LL_TIM_OC_SetCompareCH2(TIM8, ccr2_raw); // УИ2 (PC7)
         Sifu_EnableYI5();
         Sifu_EnableYI2();
-    }
-    else{
-        	if(DBMain.b96.EnableSifuOld==0){
-        		CalculateNextImpuls(5);
-        	}
-
-    }
-    DBMain.b96.EnableSifuOld = DBMain.b64.EnableSifu;
+//    }
+//    else{
+////        	if(DBMain.b96.EnableSifuOld==0){
+////        		CalculateNextImpuls(5);
+////        	}
+//
+//    }
+//    DBMain.b96.EnableSifuOld = DBMain.b64.EnableSifu;
   }
   /* === 2. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 1 (УИ5 - PC6) === */
   if (LL_TIM_IsActiveFlag_CC1(TIM8))
@@ -743,9 +754,9 @@ void TIM8_CC_IRQHandler(void)
           //ProtectSystem();
           //TehnologSystem();
           //RegulationSystem();
-          if (DBMain.b64.EnableSifu == 1) {
-              	  CalculateNextImpuls(6);
-                      }
+//          if (DBMain.b64.EnableSifu == 1) {
+//              	  CalculateNextImpuls(6);
+//                      }
 //          }
   }
   /* === 3. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 2 (УИ2 - PC7) === */
@@ -773,9 +784,9 @@ void TIM8_CC_IRQHandler(void)
           //ProtectSystem();
           //TehnologSystem();
           //RegulationSystem();
-          if (DBMain.b64.EnableSifu == 1) {
-              	  CalculateNextImpuls(3);
-                      }
+//          if (DBMain.b64.EnableSifu == 1) {
+//              	  CalculateNextImpuls(3);
+//                      }
 //          }
   }
 
