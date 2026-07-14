@@ -43,6 +43,6 @@
 ../Core/Src/Block_Sifu.c:465:6:Sifu_EnableYI	7
 ../Core/Src/Block_Sifu.c:492:6:Sifu_StartPulseWidth	3
 ../Core/Src/Block_Sifu.c:509:6:Sifu_DisableYI	7
-../Core/Src/Block_Sifu.c:568:6:Sifu_CaptureTraceSample	9
-../Core/Src/Block_Sifu.c:609:6:Sifu_TraceStart	1
-../Core/Src/Block_Sifu.c:617:6:Sifu_TraceFreeze	1
+../Core/Src/Block_Sifu.c:570:6:Sifu_CaptureTraceSample	9
+../Core/Src/Block_Sifu.c:613:6:Sifu_TraceStart	1
+../Core/Src/Block_Sifu.c:621:6:Sifu_TraceFreeze	1

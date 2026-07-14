@@ -358,12 +358,12 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	             ticks_per_degree = PhaseA.PeriodFiltered / 360.0f;
 	             alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	             //half_period = (uint32_t)(PhaseA.PeriodFiltered / 2.0f);
-	             ccr_raw = PhaseA.T_zero + alpha_ticks;
-	             if (ccr_raw > 65535)
+	             ccr1_raw = PhaseA.T_zero + alpha_ticks;
+	             if (ccr1_raw > 65535)
 	             {
-	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	            	 ccr1_raw = ccr1_raw - 65536; // Вычитаем полный круг 16-битного таймера
 	             }
-	             LL_TIM_OC_SetCompareCH2(TIM3, ccr_raw);              // УИ1 (PA7)
+	             LL_TIM_OC_SetCompareCH2(TIM3, ccr1_raw);              // УИ1 (PA7)
 	            // LL_TIM_OC_SetCompareCH3(TIM3, PhaseA.T_zero + alpha_ticks + half_period); // УИ4 (PB0)
 	             Sifu_EnableYI(pulse_num);
 	            break;
@@ -371,25 +371,25 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	            ticks_per_degree = PhaseC.PeriodFiltered / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	            half_period = (uint32_t)(PhaseC.PeriodFiltered / 2.0f);
-	             ccr_raw = PhaseC.T_zero + alpha_ticks + half_period;
-	             if (ccr_raw > 65535)
+	             ccr2_raw = PhaseC.T_zero + alpha_ticks + half_period;
+	             if (ccr2_raw > 65535)
 	             {
-	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	                 ccr2_raw = ccr2_raw - 65536; // Вычитаем полный круг 16-битного таймера
 	             }
 	            //LL_TIM_OC_SetCompareCH1(TIM8, PhaseC.T_zero + alpha_ticks);              // УИ5 (PC6)
-	            LL_TIM_OC_SetCompareCH2(TIM8, ccr_raw); // УИ2 (PC7)
+	            LL_TIM_OC_SetCompareCH2(TIM8, ccr2_raw); // УИ2 (PC7)
 	            Sifu_EnableYI(pulse_num);
 	            break;
 	        case 3:
 	            ticks_per_degree = PhaseB.PeriodFiltered / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	            //half_period = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
-	             ccr_raw = PhaseB.T_zero + alpha_ticks;
-	             if (ccr_raw > 65535)
+	            ccr3_raw = PhaseB.T_zero + alpha_ticks;
+	             if (ccr3_raw > 65535)
 	             {
-	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	            	 ccr3_raw = ccr3_raw - 65536; // Вычитаем полный круг 16-битного таймера
 	             }
-	            LL_TIM_OC_SetCompareCH2(TIM4, ccr_raw);              // УИ3 (PD13)
+	            LL_TIM_OC_SetCompareCH2(TIM4, ccr3_raw);              // УИ3 (PD13)
 	            //LL_TIM_OC_SetCompareCH4(TIM4, PhaseB.T_zero + alpha_ticks + half_period); // УИ6 (PD15)
 	            Sifu_EnableYI(pulse_num);
 	            break;
@@ -397,25 +397,25 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	            ticks_per_degree = PhaseA.PeriodFiltered / 360.0f;
 	             alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	             half_period = (uint32_t)(PhaseA.PeriodFiltered / 2.0f);
-	             ccr_raw = PhaseA.T_zero + alpha_ticks + half_period;
-	             if (ccr_raw > 65535)
+	             ccr4_raw = PhaseA.T_zero + alpha_ticks + half_period;
+	             if (ccr4_raw > 65535)
 	             {
-	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	            	 ccr4_raw = ccr4_raw - 65536; // Вычитаем полный круг 16-битного таймера
 	             }
 	            // LL_TIM_OC_SetCompareCH2(TIM3, PhaseA.T_zero + alpha_ticks);              // УИ1 (PA7)
-	             LL_TIM_OC_SetCompareCH3(TIM3, ccr_raw); // УИ4 (PB0)
+	             LL_TIM_OC_SetCompareCH3(TIM3, ccr4_raw); // УИ4 (PB0)
 	             Sifu_EnableYI(pulse_num);
 	            break;
 	        case 5:
 	            ticks_per_degree = PhaseC.PeriodFiltered / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	           // uint32_t half_period = (uint32_t)(PhaseC.PeriodFiltered / 2.0f);
-	             ccr_raw = PhaseC.T_zero + alpha_ticks;
-	             if (ccr_raw > 65535)
+	             ccr5_raw = PhaseC.T_zero + alpha_ticks;
+	             if (ccr5_raw > 65535)
 	             {
-	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	                 ccr5_raw = ccr5_raw - 65536; // Вычитаем полный круг 16-битного таймера
 	             }
-	            LL_TIM_OC_SetCompareCH1(TIM8, ccr_raw);              // УИ5 (PC6)
+	            LL_TIM_OC_SetCompareCH1(TIM8, ccr5_raw);              // УИ5 (PC6)
 	           // LL_TIM_OC_SetCompareCH2(TIM8, PhaseC.T_zero + alpha_ticks + half_period); // УИ2 (PC7)
 	            Sifu_EnableYI(pulse_num);
 	            break;
@@ -423,13 +423,13 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	            ticks_per_degree = PhaseB.PeriodFiltered / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	            half_period = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
-	             ccr_raw = PhaseB.T_zero + alpha_ticks + half_period;
-	             if (ccr_raw > 65535)
+	             ccr6_raw = PhaseB.T_zero + alpha_ticks + half_period;
+	             if (ccr6_raw > 65535)
 	             {
-	                 ccr_raw = ccr_raw - 65536; // Вычитаем полный круг 16-битного таймера
+	                 ccr6_raw = ccr6_raw - 65536; // Вычитаем полный круг 16-битного таймера
 	             }
 	            //LL_TIM_OC_SetCompareCH2(TIM4, PhaseB.T_zero + alpha_ticks);              // УИ3 (PD13)
-	            LL_TIM_OC_SetCompareCH4(TIM4, ccr_raw); // УИ6 (PD15)
+	            LL_TIM_OC_SetCompareCH4(TIM4, ccr6_raw); // УИ6 (PD15)
 	            Sifu_EnableYI(pulse_num);
 	            break;
 	        default:
@@ -540,6 +540,8 @@ void Sifu_DisableYI(uint8_t pulse_num){
 typedef struct {
     uint32_t Tick;             // Системное время (HAL_GetTick())
     uint16_t Tim3_Cnt;         // ТЕКУЩЕЕ ЗНАЧЕНИЕ СЧЕТЧИКА TIM3 (0...65535) <-- НАШ ПИНГ
+    uint16_t Tim4_Cnt;
+    uint16_t Tim8_Cnt;
     uint8_t YiMask;            // Битовая маска состояний УИ1-УИ6 (Бит 0 = УИ1, ... Бит 5 = УИ6)
 
     // Динамика углов (выборочно основные переменные из твоего списка для контроля)
@@ -574,6 +576,8 @@ void Sifu_CaptureTraceSample(void)
     // 1. Фиксируем время
     sample->Tick = HAL_GetTick();
     sample->Tim3_Cnt = (uint16_t)LL_TIM_GetCounter(TIM3); // Фиксируем текущий тик таймера TIM3
+    sample->Tim4_Cnt = (uint16_t)LL_TIM_GetCounter(TIM4); // Фиксируем текущий тик таймера TIM3
+    sample->Tim8_Cnt = (uint16_t)LL_TIM_GetCounter(TIM8); // Фиксируем текущий тик таймера TIM3
 
     // 2. Упаковываем состояние выходов УИ1-УИ6 в байтовую маску
     uint8_t mask = 0;

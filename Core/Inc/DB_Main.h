@@ -265,7 +265,7 @@ typedef union {
         bool ShuntRN: 1;  bool ShuntZiN: 1;  bool UdmaxMem: 1;  bool Sled: 1;
         bool EStopMem: 1;  bool EnableSifuOld: 1;  bool PulseStage1: 1;  bool PulseStage2: 1;
         bool PulseStage3: 1;  bool PulseStage4: 1;  bool PulseStage5: 1;  bool PulseStage6: 1;
-        bool Save_to_Flash: 1;  bool Read_from_Flash: 1;  bool bit79: 1;  bool bit80: 1;
+        bool Save_to_Flash: 1;  bool Read_from_Flash: 1;  bool StartSifu: 1;  bool StartSifuOld: 1;
         bool bit81: 1;  bool bit82: 1;  bool bit83: 1;  bool bit84: 1;
         bool bit85: 1;  bool bit86: 1;  bool bit87: 1;  bool bit88: 1;
         bool bit89: 1;  bool bit90: 1;  bool bit91: 1;  bool bit92: 1;

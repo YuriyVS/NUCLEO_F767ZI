@@ -452,35 +452,35 @@ void TIM3_IRQHandler(void)
 ////    	    		Sifu_TraceStart();}
 //    	Sifu_TraceFreeze();
 //        Sifu_DisableYI14();
-        float ticks_per_degree = PhaseA.PeriodFiltered / 360.0f;
-        uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
-        uint32_t half_period = (uint32_t)(PhaseA.PeriodFiltered / 2.0f);
-
-        // 1. Считаем полные суммы в 32-битном пространстве (числа могут быть > 65535)
-        ccr1_raw = PhaseA.T_zero + alpha_ticks;
-        ccr4_raw = PhaseA.T_zero + alpha_ticks + half_period;
-
-        // 2. Явный циклический перенос для Канала 2 (УИ1)
-        if (ccr1_raw > 65535)
-        {
-            ccr1_raw = ccr1_raw - 65536; // Вычитаем полный круг 16-битного таймера
-        }
-
-        // 3. Явный циклический перенос для Канала 3 (УИ4)
-        if (ccr4_raw > 65535)
-        {
-            ccr4_raw = ccr4_raw - 65536; // Вычитаем полный круг 16-битного таймера
-        }
-        // 4. Записываем гарантированно скорректированные значения в регистры таймера
-        LL_TIM_OC_SetCompareCH2(TIM3, ccr1_raw); // УИ1 (PA7)
-        LL_TIM_OC_SetCompareCH3(TIM3, ccr4_raw); // УИ4 (PB0)
-        // 3. ПРИНУДИТЕЛЬНО ЧИСТИМ ХВОСТЫ (Флаги сравнения)
-                LL_TIM_ClearFlag_CC2(TIM3);
-                LL_TIM_ClearFlag_CC3(TIM3);
-
-                // 5. РАЗРЕШАЕМ ПРЕРЫВАНИЯ СРАВНЕНИЯ. Теперь они выстрелят строго вовремя!
-                LL_TIM_EnableIT_CC2(TIM3); // Включаем ожидание УИ1
-                LL_TIM_EnableIT_CC3(TIM3); // Включаем ожидание УИ4
+//        float ticks_per_degree = PhaseA.PeriodFiltered / 360.0f;
+//        uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
+//        uint32_t half_period = (uint32_t)(PhaseA.PeriodFiltered / 2.0f);
+//
+//        // 1. Считаем полные суммы в 32-битном пространстве (числа могут быть > 65535)
+//        ccr1_raw = PhaseA.T_zero + alpha_ticks;
+//        ccr4_raw = PhaseA.T_zero + alpha_ticks + half_period;
+//
+//        // 2. Явный циклический перенос для Канала 2 (УИ1)
+//        if (ccr1_raw > 65535)
+//        {
+//            ccr1_raw = ccr1_raw - 65536; // Вычитаем полный круг 16-битного таймера
+//        }
+//
+//        // 3. Явный циклический перенос для Канала 3 (УИ4)
+//        if (ccr4_raw > 65535)
+//        {
+//            ccr4_raw = ccr4_raw - 65536; // Вычитаем полный круг 16-битного таймера
+//        }
+//        // 4. Записываем гарантированно скорректированные значения в регистры таймера
+//        LL_TIM_OC_SetCompareCH2(TIM3, ccr1_raw); // УИ1 (PA7)
+//        LL_TIM_OC_SetCompareCH3(TIM3, ccr4_raw); // УИ4 (PB0)
+//        // 3. ПРИНУДИТЕЛЬНО ЧИСТИМ ХВОСТЫ (Флаги сравнения)
+//                LL_TIM_ClearFlag_CC2(TIM3);
+//                LL_TIM_ClearFlag_CC3(TIM3);
+//
+//                // 5. РАЗРЕШАЕМ ПРЕРЫВАНИЯ СРАВНЕНИЯ. Теперь они выстрелят строго вовремя!
+//                LL_TIM_EnableIT_CC2(TIM3); // Включаем ожидание УИ1
+//                LL_TIM_EnableIT_CC3(TIM3); // Включаем ожидание УИ4
     if (DBMain.b64.EnableSifu == 0){
 //                    	if(DBMain.b96.EnableSifuOld==1){
 //                    	    		Sifu_TraceStart();}
@@ -495,11 +495,16 @@ void TIM3_IRQHandler(void)
     	}
 
     }
+    if(DBMain.b96.StartSifu==1 && DBMain.b96.StartSifuOld==0){
+    	CalculateNextImpuls(1);
+//    	CalculateNextImpuls(4);
+    }
     DBMain.b96.EnableSifuOld = DBMain.b64.EnableSifu;
+    DBMain.b96.StartSifuOld = DBMain.b96.StartSifu;
 
   }
   /* === 2. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 2 (УИ1 - PA7) === */
-  if (LL_TIM_IsActiveFlag_CC2(TIM3))
+  if (LL_TIM_IsActiveFlag_CC2(TIM3) && LL_TIM_IsEnabledIT_CC2(TIM3))
   {
       LL_TIM_ClearFlag_CC2(TIM3); // Обязательный сброс
 
@@ -529,13 +534,16 @@ void TIM3_IRQHandler(void)
       //ProtectSystem();
       //TehnologSystem();
       //RegulationSystem();
-//      if (DBMain.b64.EnableSifu == 1) {
-//          	  CalculateNextImpuls(4);
-//                  }
+      if (DBMain.b96.StartSifu==1) {
+          	  CalculateNextImpuls(2);
+                  }
 //      }
   }
+  else{
+	  LL_TIM_ClearFlag_CC2(TIM3);
+  }
   /* === 3. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 3 (УИ4 - PB0) === */
-  if (LL_TIM_IsActiveFlag_CC3(TIM3))
+  if (LL_TIM_IsActiveFlag_CC3(TIM3) && LL_TIM_IsEnabledIT_CC3(TIM3))
   {
       LL_TIM_ClearFlag_CC3(TIM3);
 
@@ -562,11 +570,15 @@ void TIM3_IRQHandler(void)
       //ProtectSystem();
       //TehnologSystem();
       //RegulationSystem();
-//      if (DBMain.b64.EnableSifu == 1) {
-//    	  CalculateNextImpuls(1);
-//            }
+      if (DBMain.b96.StartSifu==1) {
+    	  CalculateNextImpuls(5);
+            }
 //      }
   }
+  else{
+	  LL_TIM_ClearFlag_CC3(TIM3);
+  }
+
 }
 /**
   * @brief Фаза B (TIM4, вход PD14)
@@ -585,29 +597,29 @@ void TIM4_IRQHandler(void)
 
 //    if (DBMain.b64.EnableSifu == 0){
 //    	Sifu_DisableYI36();
-        float ticks_per_degree = PhaseB.PeriodFiltered / 360.0f;
-        uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
-        uint32_t half_period = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
-        ccr3_raw = PhaseB.T_zero + alpha_ticks;
-        ccr6_raw = PhaseB.T_zero + alpha_ticks + half_period;
-
-        // 2. Явный циклический перенос для Канала 2 (УИ1)
-        if (ccr3_raw > 65535)
-        {
-            ccr3_raw = ccr3_raw - 65536; // Вычитаем полный круг 16-битного таймера
-        }
-
-        // 3. Явный циклический перенос для Канала 3 (УИ4)
-        if (ccr6_raw > 65535)
-        {
-            ccr6_raw = ccr6_raw - 65536; // Вычитаем полный круг 16-битного таймера
-        }
-
-
-        LL_TIM_OC_SetCompareCH2(TIM4, ccr3_raw);              // УИ3 (PD13)
-        LL_TIM_OC_SetCompareCH4(TIM4, ccr6_raw); // УИ6 (PD15)
-        Sifu_EnableYI3();
-        Sifu_EnableYI6();
+//        float ticks_per_degree = PhaseB.PeriodFiltered / 360.0f;
+//        uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
+//        uint32_t half_period = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
+//        ccr3_raw = PhaseB.T_zero + alpha_ticks;
+//        ccr6_raw = PhaseB.T_zero + alpha_ticks + half_period;
+//
+//        // 2. Явный циклический перенос для Канала 2 (УИ1)
+//        if (ccr3_raw > 65535)
+//        {
+//            ccr3_raw = ccr3_raw - 65536; // Вычитаем полный круг 16-битного таймера
+//        }
+//
+//        // 3. Явный циклический перенос для Канала 3 (УИ4)
+//        if (ccr6_raw > 65535)
+//        {
+//            ccr6_raw = ccr6_raw - 65536; // Вычитаем полный круг 16-битного таймера
+//        }
+//
+//
+//        LL_TIM_OC_SetCompareCH2(TIM4, ccr3_raw);              // УИ3 (PD13)
+//        LL_TIM_OC_SetCompareCH4(TIM4, ccr6_raw); // УИ6 (PD15)
+//        Sifu_EnableYI3();
+//        Sifu_EnableYI6();
 //    }
 //    else{
 ////        	if(DBMain.b96.EnableSifuOld==0){
@@ -616,11 +628,15 @@ void TIM4_IRQHandler(void)
 ////        	}
 //
 //    }
+//    if(DBMain.b96.StartSifu==1){
+//    	CalculateNextImpuls(3);
+//    	CalculateNextImpuls(6);
+//    }
 //    DBMain.b96.EnableSifuOld = DBMain.b64.EnableSifu;
 
   }
   /* === 2. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 2 (УИ3 - PD13) === */
-  if (LL_TIM_IsActiveFlag_CC2(TIM4))
+  if (LL_TIM_IsActiveFlag_CC2(TIM4)&& LL_TIM_IsEnabledIT_CC2(TIM4))
   {
         LL_TIM_ClearFlag_CC2(TIM4); //
         current_ccr3 = LL_TIM_OC_GetCompareCH2(TIM4);
@@ -644,14 +660,17 @@ void TIM4_IRQHandler(void)
         //ProtectSystem();
         //TehnologSystem();
         //RegulationSystem();
-//        if (DBMain.b64.EnableSifu == 1) {
-//            	  CalculateNextImpuls(4);
-//                    }
+        if (DBMain.b96.StartSifu==1) {
+            	  CalculateNextImpuls(4);
+                    }
 
 //        }
   }
+  else{
+	  LL_TIM_ClearFlag_CC2(TIM4);
+  }
   /* === 3. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 4 (УИ6 - PD15) === */
-  if (LL_TIM_IsActiveFlag_CC4(TIM4))
+  if (LL_TIM_IsActiveFlag_CC4(TIM4)&& LL_TIM_IsEnabledIT_CC4(TIM4))
   {
         LL_TIM_ClearFlag_CC4(TIM4);
         current_ccr6 = LL_TIM_OC_GetCompareCH4(TIM4);
@@ -675,10 +694,13 @@ void TIM4_IRQHandler(void)
         //ProtectSystem();
         //TehnologSystem();
         //RegulationSystem();
-//        if (DBMain.b64.EnableSifu == 1) {
-//      	  CalculateNextImpuls(1);
-//              }
+        if (DBMain.b96.StartSifu==1) {
+      	  CalculateNextImpuls(1);
+              }
 //        }
+  }
+  else{
+	  LL_TIM_ClearFlag_CC4(TIM4);
   }
 }
 /**
@@ -698,39 +720,43 @@ void TIM8_CC_IRQHandler(void)
 
 //    if (DBMain.b64.EnableSifu == 0){
 //    	Sifu_DisableYI52();
-        float ticks_per_degree = PhaseC.PeriodFiltered / 360.0f;
-        uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
-        uint32_t half_period = (uint32_t)(PhaseC.PeriodFiltered / 2.0f);
-        ccr5_raw = PhaseC.T_zero + alpha_ticks;
-        ccr2_raw = PhaseC.T_zero + alpha_ticks + half_period;
-
-        // 2. Явный циклический перенос для Канала 2 (УИ1)
-        if (ccr5_raw > 65535)
-        {
-            ccr5_raw = ccr5_raw - 65536; // Вычитаем полный круг 16-битного таймера
-        }
-
-        // 3. Явный циклический перенос для Канала 3 (УИ4)
-        if (ccr2_raw > 65535)
-        {
-            ccr2_raw = ccr2_raw - 65536; // Вычитаем полный круг 16-битного таймера
-        }
-
-        LL_TIM_OC_SetCompareCH1(TIM8, ccr5_raw);              // УИ5 (PC6)
-        LL_TIM_OC_SetCompareCH2(TIM8, ccr2_raw); // УИ2 (PC7)
-        Sifu_EnableYI5();
-        Sifu_EnableYI2();
+//        float ticks_per_degree = PhaseC.PeriodFiltered / 360.0f;
+//        uint32_t alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
+//        uint32_t half_period = (uint32_t)(PhaseC.PeriodFiltered / 2.0f);
+//        ccr5_raw = PhaseC.T_zero + alpha_ticks;
+//        ccr2_raw = PhaseC.T_zero + alpha_ticks + half_period;
+//
+//        // 2. Явный циклический перенос для Канала 2 (УИ1)
+//        if (ccr5_raw > 65535)
+//        {
+//            ccr5_raw = ccr5_raw - 65536; // Вычитаем полный круг 16-битного таймера
+//        }
+//
+//        // 3. Явный циклический перенос для Канала 3 (УИ4)
+//        if (ccr2_raw > 65535)
+//        {
+//            ccr2_raw = ccr2_raw - 65536; // Вычитаем полный круг 16-битного таймера
+//        }
+//
+//        LL_TIM_OC_SetCompareCH1(TIM8, ccr5_raw);              // УИ5 (PC6)
+//        LL_TIM_OC_SetCompareCH2(TIM8, ccr2_raw); // УИ2 (PC7)
+//        Sifu_EnableYI5();
+//        Sifu_EnableYI2();
 //    }
 //    else{
 ////        	if(DBMain.b96.EnableSifuOld==0){
-////        		CalculateNextImpuls(5);
+//        		CalculateNextImpuls(5);
 ////        	}
 //
+//    }
+//    if(DBMain.b96.StartSifu==1){
+//    	CalculateNextImpuls(5);
+//    	CalculateNextImpuls(2);
 //    }
 //    DBMain.b96.EnableSifuOld = DBMain.b64.EnableSifu;
   }
   /* === 2. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 1 (УИ5 - PC6) === */
-  if (LL_TIM_IsActiveFlag_CC1(TIM8))
+  if (LL_TIM_IsActiveFlag_CC1(TIM8)&& LL_TIM_IsEnabledIT_CC1(TIM8))
   {
           LL_TIM_ClearFlag_CC1(TIM8); //
           current_ccr5 = LL_TIM_OC_GetCompareCH1(TIM8);
@@ -754,13 +780,16 @@ void TIM8_CC_IRQHandler(void)
           //ProtectSystem();
           //TehnologSystem();
           //RegulationSystem();
-//          if (DBMain.b64.EnableSifu == 1) {
-//              	  CalculateNextImpuls(6);
-//                      }
+          if (DBMain.b96.StartSifu==1) {
+              	  CalculateNextImpuls(6);
+                      }
 //          }
   }
+  else{
+	  LL_TIM_ClearFlag_CC1(TIM8);
+  }
   /* === 3. СОБЫТИЕ СРАВНЕНИЯ КАНАЛ 2 (УИ2 - PC7) === */
-  if (LL_TIM_IsActiveFlag_CC2(TIM8))
+  if (LL_TIM_IsActiveFlag_CC2(TIM8)&& LL_TIM_IsEnabledIT_CC2(TIM8))
   {
           LL_TIM_ClearFlag_CC2(TIM8);
           current_ccr2 = LL_TIM_OC_GetCompareCH2(TIM8);
@@ -784,10 +813,13 @@ void TIM8_CC_IRQHandler(void)
           //ProtectSystem();
           //TehnologSystem();
           //RegulationSystem();
-//          if (DBMain.b64.EnableSifu == 1) {
-//              	  CalculateNextImpuls(3);
-//                      }
+          if (DBMain.b96.StartSifu==1) {
+              	  CalculateNextImpuls(3);
+                      }
 //          }
+  }
+  else{
+	  LL_TIM_ClearFlag_CC2(TIM8);
   }
 
   /* === КОРЕННАЯ ЗАЧИСТКА ХВОСТОВ === */

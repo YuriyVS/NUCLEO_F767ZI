@@ -301,7 +301,7 @@ int main(void)
       current_ccr4=0;
       current_ccr5=0;
       current_ccr6=0;
-
+      Sifu_DisableAll();
 
 
   while (1)
