@@ -86,8 +86,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Core/Inc/DB_Parameters.h ../Core/Inc/DB_Main.h \
  ../Core/Inc/DB_Constants.h ../Core/Inc/DI_Block.h \
  ../Core/Inc/DB_Parameters.h ../Core/Inc/DB_Main.h \
- ../Core/Inc/AI_Normalisation.h ../Core/Inc/DO_Block.h \
- ../Core/Inc/AO_Normalisation.h \
+ ../Core/Inc/AI_Normalisation.h ../Core/Inc/Reg_System.h \
+ ../Core/Inc/DO_Block.h ../Core/Inc/AO_Normalisation.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/apps/httpd.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/apps/httpd_opts.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/iana.h \
@@ -185,6 +185,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/DB_Parameters.h:
 ../Core/Inc/DB_Main.h:
 ../Core/Inc/AI_Normalisation.h:
+../Core/Inc/Reg_System.h:
 ../Core/Inc/DO_Block.h:
 ../Core/Inc/AO_Normalisation.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/apps/httpd.h:

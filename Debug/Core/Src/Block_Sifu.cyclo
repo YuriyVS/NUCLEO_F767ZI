@@ -39,7 +39,7 @@
 ../Core/Src/Block_Sifu.c:334:6:Sifu_DisableYI4	1
 ../Core/Src/Block_Sifu.c:340:6:Sifu_DisableYI5	1
 ../Core/Src/Block_Sifu.c:346:6:Sifu_DisableYI6	1
-../Core/Src/Block_Sifu.c:352:6:CalculateNextImpuls	14
+../Core/Src/Block_Sifu.c:352:6:CalculateNextImpuls	13
 ../Core/Src/Block_Sifu.c:465:6:Sifu_EnableYI	7
 ../Core/Src/Block_Sifu.c:492:6:Sifu_StartPulseWidth	3
 ../Core/Src/Block_Sifu.c:509:6:Sifu_DisableYI	7

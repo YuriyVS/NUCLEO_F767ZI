@@ -355,7 +355,7 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	uint32_t half_period;
 	switch(pulse_num) {
 	        case 1:
-	             ticks_per_degree = PhaseA.PeriodFiltered / 360.0f;
+	             ticks_per_degree = PhaseA.PeriodFiltered * one_degree_inv; // / 360.0f;
 	             alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	             //half_period = (uint32_t)(PhaseA.PeriodFiltered / 2.0f);
 	             ccr1_raw = PhaseA.T_zero + alpha_ticks;
@@ -368,9 +368,9 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	             Sifu_EnableYI(pulse_num);
 	            break;
 	        case 2:
-	            ticks_per_degree = PhaseC.PeriodFiltered / 360.0f;
+	            ticks_per_degree = PhaseC.PeriodFiltered * one_degree_inv; // / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
-	            half_period = (uint32_t)(PhaseC.PeriodFiltered / 2.0f);
+	            half_period = (uint32_t)(PhaseC.PeriodFiltered * 0.5f); // / 2.0f);
 	             ccr2_raw = PhaseC.T_zero + alpha_ticks + half_period;
 	             if (ccr2_raw > 65535)
 	             {
@@ -381,7 +381,7 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	            Sifu_EnableYI(pulse_num);
 	            break;
 	        case 3:
-	            ticks_per_degree = PhaseB.PeriodFiltered / 360.0f;
+	            ticks_per_degree = PhaseB.PeriodFiltered * one_degree_inv; // / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	            //half_period = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
 	            ccr3_raw = PhaseB.T_zero + alpha_ticks;
@@ -394,9 +394,9 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	            Sifu_EnableYI(pulse_num);
 	            break;
 	        case 4:
-	            ticks_per_degree = PhaseA.PeriodFiltered / 360.0f;
+	            ticks_per_degree = PhaseA.PeriodFiltered * one_degree_inv; // / 360.0f;
 	             alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
-	             half_period = (uint32_t)(PhaseA.PeriodFiltered / 2.0f);
+	             half_period = (uint32_t)(PhaseA.PeriodFiltered * 0.5f); // / 2.0f);
 	             ccr4_raw = PhaseA.T_zero + alpha_ticks + half_period;
 	             if (ccr4_raw > 65535)
 	             {
@@ -407,7 +407,7 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	             Sifu_EnableYI(pulse_num);
 	            break;
 	        case 5:
-	            ticks_per_degree = PhaseC.PeriodFiltered / 360.0f;
+	            ticks_per_degree = PhaseC.PeriodFiltered * one_degree_inv; // / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
 	           // uint32_t half_period = (uint32_t)(PhaseC.PeriodFiltered / 2.0f);
 	             ccr5_raw = PhaseC.T_zero + alpha_ticks;
@@ -420,9 +420,9 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	            Sifu_EnableYI(pulse_num);
 	            break;
 	        case 6:
-	            ticks_per_degree = PhaseB.PeriodFiltered / 360.0f;
+	            ticks_per_degree = PhaseB.PeriodFiltered * one_degree_inv; // / 360.0f;
 	            alpha_ticks = (uint32_t)(ticks_per_degree * DBMain.f50.Alfa_ref);
-	            half_period = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
+	            half_period = (uint32_t)(PhaseB.PeriodFiltered * 0.5f); // / 2.0f);
 	             ccr6_raw = PhaseB.T_zero + alpha_ticks + half_period;
 	             if (ccr6_raw > 65535)
 	             {
@@ -434,28 +434,28 @@ void CalculateNextImpuls(uint8_t pulse_num){
 	            break;
 	        default:
 	        	Sifu_DisableAll();
-	            if (DBMain.b64.EnableSifu == 0){
-	                float ticks_per_degreeA = PhaseA.PeriodFiltered / 360.0f;
-	                uint32_t alpha_ticksA = (uint32_t)(ticks_per_degreeA * DBMain.f50.Alfa_ref);
-	                uint32_t half_periodA = (uint32_t)(PhaseA.PeriodFiltered / 2.0f);
-
-	                LL_TIM_OC_SetCompareCH2(TIM3, PhaseA.T_zero + alpha_ticksA);              // УИ1 (PA7)
-	                LL_TIM_OC_SetCompareCH3(TIM3, PhaseA.T_zero + alpha_ticksA + half_periodA); // УИ4 (PB0)
-
-	                float ticks_per_degreeB = PhaseB.PeriodFiltered / 360.0f;
-	                uint32_t alpha_ticksB = (uint32_t)(ticks_per_degreeB * DBMain.f50.Alfa_ref);
-	                uint32_t half_periodB = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
-
-	                LL_TIM_OC_SetCompareCH2(TIM4, PhaseB.T_zero + alpha_ticksB);              // УИ3 (PD13)
-	                LL_TIM_OC_SetCompareCH4(TIM4, PhaseB.T_zero + alpha_ticksB + half_periodB); // УИ6 (PD15)
-
-	                float ticks_per_degreeC = PhaseC.PeriodFiltered / 360.0f;
-	                uint32_t alpha_ticksC = (uint32_t)(ticks_per_degreeC * DBMain.f50.Alfa_ref);
-	                uint32_t half_periodC = (uint32_t)(PhaseC.PeriodFiltered / 2.0f);
-
-	                LL_TIM_OC_SetCompareCH1(TIM8, PhaseC.T_zero + alpha_ticksC);              // УИ5 (PC6)
-	                LL_TIM_OC_SetCompareCH2(TIM8, PhaseC.T_zero + alpha_ticksC + half_periodC); // УИ2 (PC7)
-	            }
+//	            if (DBMain.b64.EnableSifu == 0){
+//	                float ticks_per_degreeA = PhaseA.PeriodFiltered / 360.0f;
+//	                uint32_t alpha_ticksA = (uint32_t)(ticks_per_degreeA * DBMain.f50.Alfa_ref);
+//	                uint32_t half_periodA = (uint32_t)(PhaseA.PeriodFiltered / 2.0f);
+//
+//	                LL_TIM_OC_SetCompareCH2(TIM3, PhaseA.T_zero + alpha_ticksA);              // УИ1 (PA7)
+//	                LL_TIM_OC_SetCompareCH3(TIM3, PhaseA.T_zero + alpha_ticksA + half_periodA); // УИ4 (PB0)
+//
+//	                float ticks_per_degreeB = PhaseB.PeriodFiltered / 360.0f;
+//	                uint32_t alpha_ticksB = (uint32_t)(ticks_per_degreeB * DBMain.f50.Alfa_ref);
+//	                uint32_t half_periodB = (uint32_t)(PhaseB.PeriodFiltered / 2.0f);
+//
+//	                LL_TIM_OC_SetCompareCH2(TIM4, PhaseB.T_zero + alpha_ticksB);              // УИ3 (PD13)
+//	                LL_TIM_OC_SetCompareCH4(TIM4, PhaseB.T_zero + alpha_ticksB + half_periodB); // УИ6 (PD15)
+//
+//	                float ticks_per_degreeC = PhaseC.PeriodFiltered / 360.0f;
+//	                uint32_t alpha_ticksC = (uint32_t)(ticks_per_degreeC * DBMain.f50.Alfa_ref);
+//	                uint32_t half_periodC = (uint32_t)(PhaseC.PeriodFiltered / 2.0f);
+//
+//	                LL_TIM_OC_SetCompareCH1(TIM8, PhaseC.T_zero + alpha_ticksC);              // УИ5 (PC6)
+//	                LL_TIM_OC_SetCompareCH2(TIM8, PhaseC.T_zero + alpha_ticksC + half_periodC); // УИ2 (PC7)
+//	            }
 
 	        	break;
 	}

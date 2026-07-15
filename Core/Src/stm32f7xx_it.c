@@ -22,10 +22,12 @@
 #include "stm32f7xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "DB_Constants.h"
 #include "DI_Block.h"
 #include "AI_Normalisation.h"
 #include "Block_Synhro.h"
 #include "Block_Sifu.h"
+#include "Reg_System.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -534,6 +536,8 @@ void TIM3_IRQHandler(void)
       //ProtectSystem();
       //TehnologSystem();
       //RegulationSystem();
+      Process_AI_All();
+      Reg_System_Proces(DBConstants.f50.TaktSystReg);
       if (DBMain.b96.StartSifu==1) {
           	  CalculateNextImpuls(2);
                   }
@@ -570,6 +574,8 @@ void TIM3_IRQHandler(void)
       //ProtectSystem();
       //TehnologSystem();
       //RegulationSystem();
+      Process_AI_All();
+      Reg_System_Proces(DBConstants.f50.TaktSystReg);
       if (DBMain.b96.StartSifu==1) {
     	  CalculateNextImpuls(5);
             }
@@ -592,7 +598,7 @@ void TIM4_IRQHandler(void)
 
     PhaseB.GlobalCapture = DWT->CYCCNT;
     deltaAB = PhaseB.GlobalCapture - PhaseA.GlobalCapture;
-    angleAB = (float)deltaAB * 360.0f / period;
+    angleAB = (float)deltaAB * period_cyccnt_inv; // * 360.0f / period_cyccnt;
     Sync_Process_Phase(&PhaseB, capture);
 
 //    if (DBMain.b64.EnableSifu == 0){
@@ -660,6 +666,8 @@ void TIM4_IRQHandler(void)
         //ProtectSystem();
         //TehnologSystem();
         //RegulationSystem();
+        Process_AI_All();
+        Reg_System_Proces(DBConstants.f50.TaktSystReg);
         if (DBMain.b96.StartSifu==1) {
             	  CalculateNextImpuls(4);
                     }
@@ -694,6 +702,8 @@ void TIM4_IRQHandler(void)
         //ProtectSystem();
         //TehnologSystem();
         //RegulationSystem();
+        Process_AI_All();
+        Reg_System_Proces(DBConstants.f50.TaktSystReg);
         if (DBMain.b96.StartSifu==1) {
       	  CalculateNextImpuls(1);
               }
@@ -715,7 +725,7 @@ void TIM8_CC_IRQHandler(void)
 
     PhaseC.GlobalCapture = DWT->CYCCNT;
     deltaAC = PhaseC.GlobalCapture - PhaseA.GlobalCapture;
-    angleAC = (float)deltaAC * 360.0f / period;
+    angleAC = (float)deltaAC * period_cyccnt_inv; // * 360.0f / period_cyccnt;
     Sync_Process_Phase(&PhaseC, capture);
 
 //    if (DBMain.b64.EnableSifu == 0){
@@ -780,6 +790,8 @@ void TIM8_CC_IRQHandler(void)
           //ProtectSystem();
           //TehnologSystem();
           //RegulationSystem();
+          Process_AI_All();
+          Reg_System_Proces(DBConstants.f50.TaktSystReg);
           if (DBMain.b96.StartSifu==1) {
               	  CalculateNextImpuls(6);
                       }
@@ -813,6 +825,8 @@ void TIM8_CC_IRQHandler(void)
           //ProtectSystem();
           //TehnologSystem();
           //RegulationSystem();
+          Process_AI_All();
+          Reg_System_Proces(DBConstants.f50.TaktSystReg);
           if (DBMain.b96.StartSifu==1) {
               	  CalculateNextImpuls(3);
                       }

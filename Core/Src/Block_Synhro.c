@@ -3,7 +3,7 @@
 
 PhaseSync_t PhaseA, PhaseB, PhaseC;
 uint32_t deltaAB, deltaAC;
-float angleAB, angleAC, period;
+float angleAB, angleAC, period_cyccnt, period_cyccnt_inv, one_degree_inv;
 uint32_t ccr1_raw, ccr4_raw, current_ccr1, current_ccr4, ccr_raw;
 uint32_t ccr3_raw, ccr6_raw, current_ccr3, current_ccr6;
 uint32_t ccr5_raw, ccr2_raw, current_ccr5, current_ccr2;
@@ -99,7 +99,7 @@ void Sync_Process_Phase(PhaseSync_t *phase, uint32_t capture)
 
     // 3. Расчет виртуального нуля (T_zero) с учетом поправки Р50.5
     // T_phasing = Period_filtered * P50.5 / 360
-    float ticks_per_degree = phase->PeriodFiltered / 360.0f;
+    float ticks_per_degree = phase->PeriodFiltered * one_degree_inv; // / 360.0f;
     uint32_t t_phasing = (uint32_t)(ticks_per_degree * DBParameters.f100.P50_5);
     phase->T_zero = capture + t_phasing;
     phase->T_Pulse_width = (uint32_t)(DBParameters.f100.P50_4);

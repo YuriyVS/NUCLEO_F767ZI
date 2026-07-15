@@ -1,4 +1,4 @@
-Core/Src/stm32f7xx_it.o: ../Core/Src/stm32f7xx_it.c ../Core/Inc/main.h \
+Core/Src/Reg_System.o: ../Core/Src/Reg_System.c ../Core/Inc/main.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal.h \
  ../Core/Inc/stm32f7xx_hal_conf.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal_rcc.h \
@@ -44,11 +44,8 @@ Core/Src/stm32f7xx_it.o: ../Core/Src/stm32f7xx_it.c ../Core/Inc/main.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_dma.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_gpio.h \
- ../Core/Inc/stm32f7xx_it.h ../Core/Inc/DB_Constants.h \
- ../Core/Inc/DI_Block.h ../Core/Inc/DB_Parameters.h ../Core/Inc/DB_Main.h \
- ../Core/Inc/AI_Normalisation.h ../Core/Inc/Block_Synhro.h \
- ../Core/Inc/DB_Constants.h ../Core/Inc/Block_Sifu.h \
- ../Core/Inc/Reg_System.h
+ ../Core/Inc/Reg_System.h ../Core/Inc/DB_Main.h \
+ ../Core/Inc/DB_Parameters.h ../Core/Inc/DB_Constants.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal.h:
 ../Core/Inc/stm32f7xx_hal_conf.h:
@@ -95,13 +92,7 @@ Core/Src/stm32f7xx_it.o: ../Core/Src/stm32f7xx_it.c ../Core/Inc/main.h \
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_dma.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_gpio.h:
-../Core/Inc/stm32f7xx_it.h:
-../Core/Inc/DB_Constants.h:
-../Core/Inc/DI_Block.h:
-../Core/Inc/DB_Parameters.h:
-../Core/Inc/DB_Main.h:
-../Core/Inc/AI_Normalisation.h:
-../Core/Inc/Block_Synhro.h:
-../Core/Inc/DB_Constants.h:
-../Core/Inc/Block_Sifu.h:
 ../Core/Inc/Reg_System.h:
+../Core/Inc/DB_Main.h:
+../Core/Inc/DB_Parameters.h:
+../Core/Inc/DB_Constants.h:

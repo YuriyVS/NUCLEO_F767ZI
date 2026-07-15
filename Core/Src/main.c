@@ -30,6 +30,7 @@
 #include "DB_Constants.h"
 #include "DI_Block.h"
 #include "AI_Normalisation.h"
+#include "Reg_System.h"
 #include "DO_Block.h"
 #include "AO_Normalisation.h"
 #include "lwip/apps/httpd.h" // Обязательно для httpd_init()
@@ -278,7 +279,7 @@ int main(void)
   DBMain.b96.Read_from_Flash = 0;
   Init_FreqChannels();
 
-  float dt_ai = 3.3f; // Расчет каждые 3.3 мс
+  //float dt_ai = 3.3f; // Расчет каждые 3.3 мс
   LL_DAC_Enable(DAC1, LL_DAC_CHANNEL_1);
   LL_DAC_Enable(DAC1, LL_DAC_CHANNEL_2);
   DI_Timer = HAL_GetTick();
@@ -288,7 +289,9 @@ int main(void)
 
       // 2. Проверка чередования фаз
       // Берем текущий период Фазы А как эталон (360 градусов)
-      period = 20000 * K;
+      period_cyccnt = 20000 * K;
+      period_cyccnt_inv = 1.0f * 360.0f / period_cyccnt;
+      one_degree_inv = 1.0f / 360.0f;
       ccr1_raw=0;
       ccr2_raw=0;
       ccr3_raw=0;
@@ -386,33 +389,10 @@ int main(void)
 	    	  last_tick_ai = new_tick_ai;
 	    	  if(samples_count > samples_count_max)samples_count_max=samples_count;
 	    	  // Отключаем прерывания на момент копирования, чтобы данные не изменились
-		          __disable_irq();
-		          for(int i=0; i<6; i++) {
-		        	  AI_Channels[i].RawSum = raw_sum[i];
-		        	  AI_Channels[i].SamplesCount = samples_count;
-		        	  raw_sum[i] = 0; // Сбрасываем для нового цикла накопления
-		          }
-
-		          samples_count = 0;
-		          __enable_irq();
-
-		          // 1. Напруга в мережі (Useti)
-		          Process_AI(&AI_Channels[0], DBParameters.f50.P20_1, DBParameters.f50.P20_2,
-		                             DBParameters.f50.P20_3, DBParameters.f50.P21_2, dt_ai);
-		          DBMain.f50.UsetiV = AI_Channels[0].FilteredVal;
-		          DBMain.f50.Useti = AI_Channels[0].PhysicalPct;
-
-		          // 2. Струм AKB (Iakb)
-		          Process_AI(&AI_Channels[3], DBParameters.f50.P20_4, DBParameters.f50.P20_5,
-		                             DBParameters.f50.P20_6, DBParameters.f50.P21_5, dt_ai);
-		          DBMain.f50.IakbA = AI_Channels[3].FilteredVal;
-		          DBMain.f50.Iakb = AI_Channels[3].PhysicalPct;
-
-		          // 3. Резерв 1 (Rezerv1)
-		          Process_AI(&AI_Channels[4], DBParameters.f50.P20_7, DBParameters.f50.P20_8,
-		                             DBParameters.f50.P20_9, DBParameters.f50.P21_8, dt_ai);
-		          DBMain.f50.Rezerv1U = AI_Channels[4].FilteredVal;
-		          DBMain.f50.Rezerv1 = AI_Channels[4].PhysicalPct;
+	    	  if (DBMain.b96.StartSifu==0){
+	    		  Process_AI_All();
+	    		  Reg_System_Proces(DBConstants.f50.TaktSystReg);
+	    	  }
 
 
 

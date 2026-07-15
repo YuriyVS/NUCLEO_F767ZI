@@ -35,5 +35,6 @@ extern uint32_t samples_count;
 // Прототипы функций
 extern void AI_Accumulate(uint16_t *adc_data);
 extern void Process_AI(AI_Channel_t *ch, float P_Gain, float P_Offset, float P_FullScale, float P_TimeConstant, float dt);
+extern void Process_AI_All(void);
 
 #endif

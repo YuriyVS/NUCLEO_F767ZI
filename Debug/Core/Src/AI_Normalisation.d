@@ -45,7 +45,7 @@ Core/Src/AI_Normalisation.o: ../Core/Src/AI_Normalisation.c \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_tim.h \
  ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_ll_gpio.h \
  ../Core/Inc/AI_Normalisation.h ../Core/Inc/DB_Parameters.h \
- ../Core/Inc/DB_Constants.h
+ ../Core/Inc/DB_Constants.h ../Core/Inc/DB_Main.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F7xx_HAL_Driver/Inc/stm32f7xx_hal.h:
 ../Core/Inc/stm32f7xx_hal_conf.h:
@@ -95,3 +95,4 @@ Core/Src/AI_Normalisation.o: ../Core/Src/AI_Normalisation.c \
 ../Core/Inc/AI_Normalisation.h:
 ../Core/Inc/DB_Parameters.h:
 ../Core/Inc/DB_Constants.h:
+../Core/Inc/DB_Main.h:
