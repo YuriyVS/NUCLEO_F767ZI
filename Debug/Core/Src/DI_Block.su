@@ -8,4 +8,4 @@
 ../Core/Src/DI_Block.c:93:6:Interrupt_PE012_Init	8	static
 ../Core/Src/DI_Block.c:112:6:Process_Frequency_Input	24	static
 ../Core/Src/DI_Block.c:139:6:Update_Calculated_Frequency	16	static,ignoring_inline_asm
-../Core/Src/DI_Block.c:165:6:Init_FreqChannels	16	static
+../Core/Src/DI_Block.c:168:6:Init_FreqChannels	16	static

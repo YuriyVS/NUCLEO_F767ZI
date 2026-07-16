@@ -160,6 +160,9 @@ void Update_Calculated_Frequency(void)
     if(FreqChannels[1].Counter>1) DBMain.f50.FreqGenBCHz = FreqChannels[1].Frequency;
     if(FreqChannels[2].Counter>1) DBMain.f50.FreqGenCAHz = FreqChannels[2].Frequency;
     DBMain.f50.SpeedCar = (DBMain.f50.FreqGenABHz + DBMain.f50.FreqGenBCHz + DBMain.f50.FreqGenCAHz)/(3.0f * DBParameters.f50.P6_6);
+    FreqChannels[0].Counter = 0;
+    FreqChannels[1].Counter = 0;
+    FreqChannels[2].Counter = 0;
 }
 
 void Init_FreqChannels(void)

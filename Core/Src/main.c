@@ -314,13 +314,13 @@ int main(void)
 	    	  	      DI_Timer +=1;//DI_Timer = HAL_GetTick();
 	    	          Read_DI_Input_Filtered(); // Выполняется в основном потоке раз в 1 мс
 	    	          DI_XOR();
-	    	          Update_Calculated_Frequency();
+	    	          //Update_Calculated_Frequency();
 	    	  }
 	  	  }
 	  	  else{
 	  		  Read_DI_Input();
 	  		  DI_XOR();
-	  		Update_Calculated_Frequency();
+	  		//Update_Calculated_Frequency();
 	  	  }
 //	      // 1. ГОЛОВНЕ: Обробка мережевого стека LwIP.
 //	      // Без цієї функції Modbus TCP не буде відповідати!
@@ -330,6 +330,7 @@ int main(void)
 	      // щоб візуально бачити, що програма не зависла.
 	      static uint32_t last_heartbeat = 0;
 	      if (HAL_GetTick() - last_heartbeat > 1000) {
+	    	  Update_Calculated_Frequency();
 	    	  Modbus_Registers[1]++; // Збільшуємо значення
 	          LL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
 	          last_heartbeat = HAL_GetTick();
