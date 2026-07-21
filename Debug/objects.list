@@ -8,6 +8,7 @@
 "./Core/Src/DI_Block.o"
 "./Core/Src/DO_Block.o"
 "./Core/Src/Reg_System.o"
+"./Core/Src/event_log.o"
 "./Core/Src/main.o"
 "./Core/Src/stm32f7xx_hal_msp.o"
 "./Core/Src/stm32f7xx_it.o"

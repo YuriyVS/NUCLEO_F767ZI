@@ -1,0 +1,5 @@
+../Drivers/CMSIS/Include/core_cm7.h:2491:22:SCB_CleanDCache_by_Addr	32	static,ignoring_inline_asm
+../Core/Src/event_log.c:7:6:Log_Init	8	static
+../Core/Src/event_log.c:14:6:Log_Write	40	static,ignoring_inline_asm
+../Core/Src/event_log.c:50:6:Log_GetEntry	32	static
+../Core/Src/event_log.c:67:6:Log_Clear	4	static,ignoring_inline_asm

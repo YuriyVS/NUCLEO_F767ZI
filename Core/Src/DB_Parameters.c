@@ -162,17 +162,32 @@ const DB_Parameters_Main DBParametersFactory ={
 extern CRC_HandleTypeDef hcrc; // Должен быть настроен в CubeMX
 
 // Внутренняя функция для расчета
-static uint32_t Calculate_Buffer_CRC(DB_Parameters_Main *ptr) {
+static uint32_t Calculate_Buffer_CRC(volatile DB_Parameters_Main *ptr) {
     // Вычисляем количество 32-битных слов во всей структуре, кроме поля CRC32
     // (sizeof(DBMain) / 4) - 1  => 13 слов
-    uint32_t length = (sizeof(DBParameters) / 4) - 1;
+    //uint32_t length = (sizeof(DB_Parameters_Main) / sizeof(uint32_t)) - 1;
+    uint32_t length = sizeof(DB_Parameters_Main) - 4;
+
+//#if defined(STM32F7) || defined(STM32H7)
+//    // 2. Очищаем D-Cache: принудительно сбрасываем свежие b32/b64/b96 из кэша в RAM,
+//    // чтобы аппаратный блок CRC прочитал актуальные данные!
+//    SCB_CleanDCache_by_Addr((uint32_t*)ptr, sizeof(DB_Parameters_Main));
+//#endif
 
     // Считаем аппаратным модулем
     return HAL_CRC_Calculate(&hcrc, (uint32_t*)ptr, length);
 }
 
 void DB_UpdateCRC(void) {
-	DBParameters.CRC32 = Calculate_Buffer_CRC((DB_Parameters_Main*)&DBParameters);
+	//DBParameters.CRC32 = Calculate_Buffer_CRC((DB_Parameters_Main*)&DBParameters);
+	DBParameters.CRC32 = Calculate_Buffer_CRC(&DBParameters);
+
+//	#if defined(STM32F7) || defined(STM32H7)
+//    // 4. Выталкиваем сам обновленный CRC32 из кэша в RAM,
+//    // чтобы его увидели Modbus и функция сохранения во Flash
+//    SCB_CleanDCache_by_Addr((uint32_t*)&DBParameters.CRC32, sizeof(uint32_t));
+//#endif
+
 }
 
 bool DB_CheckCRC(DB_Parameters_Main *ptr) {

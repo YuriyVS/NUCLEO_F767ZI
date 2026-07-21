@@ -37,6 +37,7 @@
 #include "web_server.h"
 #include "Block_Synhro.h"
 #include "Block_Sifu.h"
+#include "event_log.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -71,14 +72,16 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
 extern UART_HandleTypeDef huart3; // Кажемо компілятору: "huart3 оголошена десь в іншому місці"
-extern UART_HandleTypeDef huart6; // Кажемо компілятору: "huart3 оголошена десь в іншому місці"
+extern UART_HandleTypeDef huart6; // Кажемо компілятору: "huart6 оголошена десь в іншому місці"
 uint16_t Modbus_Registers[10] = {0}; // Наші Holding Registers
 uint8_t RTU_Rx_Buf[256];             // Буфер для прийому по UART
 uint8_t rx_buf_usart6[256];
-uint8_t usart3_tx_buf[256];
-uint8_t usart6_tx_buf[256];
-uint16_t Modbus6_Rx_Len;
-bool Modbus6_New_Packet_Flag;
+//uint8_t usart3_tx_buf[256];
+//uint8_t usart6_tx_buf[256];
+uint8_t usart3_tx_buf[256] __attribute__((aligned(32)));
+uint8_t usart6_tx_buf[256] __attribute__((aligned(32)));
+volatile uint16_t Modbus6_Rx_Len;
+volatile bool Modbus6_New_Packet_Flag;
 uint32_t DI_Timer = 0; // Переменная для хранения времени последнего опроса входов
 bool filterDI = 1;
 
@@ -125,6 +128,8 @@ static void MX_TIM3_Init(void);
 void MPU_Config(void);
 uint16_t Modbus_CRC16(uint8_t *buffer, uint16_t length);
 //void Modbus_RTU_Parse(uint8_t *rx_data, uint16_t length);
+// Вспомогательная функция отправки ошибок Modbus RTU
+void Modbus_SendException(UART_HandleTypeDef *huart, uint8_t *tx_buf, uint8_t f_code, uint8_t exception_code);
 void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t length);
 void CAN1_Init_User(void);
 
@@ -232,6 +237,9 @@ int main(void)
     /* --- БЛОК СИНХРОНИЗАЦИИ --- */
     MX_SyncTimers_NVIC_Init(); // Настраиваем приоритеты NVIC
     MX_SyncTimers_Start();  // Включаем прерывания в регистрах таймеров
+
+    // Инициализация оперативного журнала
+    Log_Init();
 
   /* USER CODE END 2 */
 
@@ -1721,85 +1729,455 @@ uint16_t Modbus_CRC16(uint8_t *buffer, uint16_t length) {
 //    }
 //}
 
-void Modbus_RTU_Parse(UART_HandleTypeDef *huart,uint8_t *rx_data, uint16_t length) {
+// Вспомогательная функция отправки ошибок Modbus RTU
+void Modbus_SendException(UART_HandleTypeDef *huart, uint8_t *tx_buf, uint8_t f_code, uint8_t exception_code) {
+    tx_buf[0] = 1;                         // Slave ID
+    tx_buf[1] = f_code | 0x80;             // Код ошибки
+    tx_buf[2] = exception_code;            // Код исключения
+
+    uint16_t crc = Modbus_CRC16(tx_buf, 3);
+    tx_buf[3] = crc & 0xFF;
+    tx_buf[4] = (crc >> 8) & 0xFF;
+
+    // Выталкиваем из кэша (выравниваем размер до 32 байт для безопасности D-Cache)
+    SCB_CleanDCache_by_Addr((uint32_t *)tx_buf, 32);
+    HAL_UART_Transmit_DMA(huart, tx_buf, 5);
+}
+
+void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t length) {
     if (length < 8) return;
 
-    // Проверка CRC и Slave ID (1)
-    if (Modbus_CRC16(rx_data, length - 2) != ((rx_data[length-1] << 8) | rx_data[length-2])) return;
-    if (rx_data[0] != 1) return;
+    // 1. Проверка CRC16 и Slave ID
+    uint16_t rx_crc = (rx_data[length-1] << 8) | rx_data[length-2];
+    if (Modbus_CRC16(rx_data, length - 2) != rx_crc) return;
+    if (rx_data[0] != 1) return; // Наш адрес Modbus = 1
 
     uint8_t f_code = rx_data[1];
     uint16_t start_addr = (rx_data[2] << 8) | rx_data[3];
     uint16_t reg_count = (rx_data[4] << 8) | rx_data[5];
 
-    //uint8_t tx_buf[256];
     uint8_t *tx_buf = NULL;
     uint16_t tx_len = 0;
     uint16_t *base_ptr = NULL;
+    uint16_t db_max_regs = 0; // Максимальный размер выбранной БД (в словах)
 
-    // 1. Аппаратно разделяем буферы отправки, чтобы USART3 и USART6 не терли данные друг другу
-        if (huart->Instance == USART3) {
-            tx_buf = usart3_tx_buf;
-        } else if (huart->Instance == USART6) {
-            tx_buf = usart6_tx_buf;
-        } else {
-            return; // Неизвестный UART
-        }
+    // Флаги типа выбранного адреса
+    bool is_param_db = false;
+    bool is_log_db   = false;
 
-        // Проверяем, не занят ли DMA отправкой предыдущего пакета этого интерфейса!
-        if (huart->gState != HAL_UART_STATE_READY) {
-            return; // Если прошлый пакет еще шлется, игнорируем новый, чтобы не вызвать аппаратную ошибку
-        }
-
-    // Выбор базы данных
-    if (start_addr < 1000) {
-        base_ptr = (uint16_t *)&DBParameters;
+    // 2. Аппаратно разделяем буферы отправки DMA
+    if (huart->Instance == USART3) {
+        tx_buf = usart3_tx_buf;
+    } else if (huart->Instance == USART6) {
+        tx_buf = usart6_tx_buf;
     } else {
-        base_ptr = (uint16_t *)&DBMain;
-        start_addr -= 1000;
+        return; // Неизвестный интерфейс
     }
 
-    // --- Функция 03: Чтение ---
-    if (f_code == 0x03) {
-        tx_buf[0] = 1; tx_buf[1] = 0x03; tx_buf[2] = reg_count * 2;
-        for (int i = 0; i < reg_count; i++) {
-            uint16_t val = base_ptr[start_addr + i];
-            tx_buf[3 + i*2] = (val >> 8) & 0xFF;
-            tx_buf[4 + i*2] = val & 0xFF;
-        }
-        tx_len = 3 + (reg_count * 2);
+    // Проверяем, свободен ли передатчик DMA
+    if (huart->gState != HAL_UART_STATE_READY) {
+        return;
     }
-    // --- Функция 16 (0x10): Запись нескольких регистров ---
-    // Weintek шлет именно её для 32-битных данных
+
+    // 3. Маршрутизация по адресам памяти
+    if (start_addr < 1000) {
+        // --- Зона 0..999: DBParameters (Уставки) ---
+        base_ptr = (uint16_t *)&DBParameters;
+        db_max_regs = sizeof(DBParameters) / sizeof(uint16_t);
+        is_param_db = true;
+    }
+    else if (start_addr >= 1000 && start_addr < 2000) {
+        // --- Зона 1000..1999: DBMain (Оперативные данные) ---
+        base_ptr = (uint16_t *)&DBMain;
+        db_max_regs = sizeof(DBMain) / sizeof(uint16_t);
+        start_addr -= 1000;
+        is_param_db = false;
+    }
+    else {
+        // --- Зона 2000+: Журнал Событий (EventLogBuffer) ---
+        is_log_db = true;
+    }
+
+    // =========================================================================
+    // --- ФУНКЦИЯ 03 (0x03): Чтение Holding Registers ---
+    // =========================================================================
+    if (f_code == 0x03) {
+
+        // ---------------------------------------------------------------------
+        // ВЕТКА А: Чтение из Журнала Событий (Стратегия 1: Логическая адресация)
+        // ---------------------------------------------------------------------
+        if (is_log_db) {
+
+            // 1. Запрос статистики журнала (Адрес 2000, 3 регистра)
+            if (start_addr == 2000 && reg_count == 3) {
+                tx_buf[0] = 1;
+                tx_buf[1] = 0x03;
+                tx_buf[2] = 6; // 3 регистра * 2 байта
+
+                uint32_t total = EventLogBuffer.total_recorded;
+                uint16_t count = (uint16_t)EventLogBuffer.count;
+
+                // Упаковка total_recorded (uint32_t -> 4 байта)
+                tx_buf[3] = (total >> 24) & 0xFF;
+                tx_buf[4] = (total >> 16) & 0xFF;
+                tx_buf[5] = (total >> 8)  & 0xFF;
+                tx_buf[6] = total & 0xFF;
+
+                // Упаковка count (uint16_t -> 2 байта)
+                tx_buf[7] = (count >> 8) & 0xFF;
+                tx_buf[8] = count & 0xFF;
+
+                tx_len = 9;
+            }
+
+            // 2. Запрос пачки записей журнала (Адреса 2010+, reg_count кратен 8)
+            else if (start_addr >= 2010 && (reg_count % 8) == 0) {
+                uint32_t start_depth = (start_addr - 2010) / 8; // Глубина поиска
+                uint16_t entries_requested = reg_count / 8;     // Кол-во записей
+
+                // Ограничение размера пакета (максимум 15 записей = 120 регистров)
+                if (entries_requested > 15 || (3 + (reg_count * 2) + 2) > 256) {
+                    Modbus_SendException(huart, tx_buf, f_code, 0x03); // Illegal Data Value
+                    return;
+                }
+
+                tx_buf[0] = 1;
+                tx_buf[1] = 0x03;
+                tx_buf[2] = entries_requested * 16; // По 16 байт на запись
+
+                uint16_t tx_idx = 3;
+
+                for (uint16_t i = 0; i < entries_requested; i++) {
+                    LogEntry_t entry;
+                    uint32_t current_depth = start_depth + i;
+
+                    // Вычитываем запись хронологически из ring-буфера
+                    if (Log_GetEntry(current_depth, &entry)) {
+
+                        // timestamp (uint32_t)
+                        tx_buf[tx_idx++] = (entry.timestamp >> 24) & 0xFF;
+                        tx_buf[tx_idx++] = (entry.timestamp >> 16) & 0xFF;
+                        tx_buf[tx_idx++] = (entry.timestamp >> 8)  & 0xFF;
+                        tx_buf[tx_idx++] = entry.timestamp & 0xFF;
+
+                        // event_id (uint16_t)
+                        tx_buf[tx_idx++] = (entry.event_id >> 8) & 0xFF;
+                        tx_buf[tx_idx++] = entry.event_id & 0xFF;
+
+                        // severity & flags (uint8_t)
+                        tx_buf[tx_idx++] = entry.severity;
+                        tx_buf[tx_idx++] = entry.flags;
+
+                        // value (float)
+                        uint32_t val_raw;
+                        memcpy(&val_raw, &entry.value, sizeof(float));
+                        tx_buf[tx_idx++] = (val_raw >> 24) & 0xFF;
+                        tx_buf[tx_idx++] = (val_raw >> 16) & 0xFF;
+                        tx_buf[tx_idx++] = (val_raw >> 8)  & 0xFF;
+                        tx_buf[tx_idx++] = val_raw & 0xFF;
+
+                        // param_id (uint32_t)
+                        tx_buf[tx_idx++] = (entry.param_id >> 24) & 0xFF;
+                        tx_buf[tx_idx++] = (entry.param_id >> 16) & 0xFF;
+                        tx_buf[tx_idx++] = (entry.param_id >> 8)  & 0xFF;
+                        tx_buf[tx_idx++] = entry.param_id & 0xFF;
+
+                    } else {
+                        // Если зашли за пределы имеющихся записей — забиваем нулями
+                        memset(&tx_buf[tx_idx], 0, 16);
+                        tx_idx += 16;
+                    }
+                }
+
+                tx_len = tx_idx;
+            }
+            else {
+                Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+                return;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // ВЕТКА Б: Обычное чтение структуры DBParameters или DBMain
+        // ---------------------------------------------------------------------
+        else {
+            if ((start_addr + reg_count) > db_max_regs || reg_count == 0) {
+                Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+                return;
+            }
+            if (3 + (reg_count * 2) + 2 > 256) {
+                Modbus_SendException(huart, tx_buf, f_code, 0x03); // Illegal Data Value
+                return;
+            }
+
+            tx_buf[0] = 1;
+            tx_buf[1] = 0x03;
+            tx_buf[2] = reg_count * 2;
+
+            for (int i = 0; i < reg_count; i++) {
+                uint16_t val = base_ptr[start_addr + i];
+                tx_buf[3 + i*2] = (val >> 8) & 0xFF;
+                tx_buf[4 + i*2] = val & 0xFF;
+            }
+            tx_len = 3 + (reg_count * 2);
+        }
+    }
+
+    // =========================================================================
+    // --- ФУНКЦИЯ 16 (0x10): Запись нескольких регистров ---
+    // =========================================================================
     else if (f_code == 0x10) {
+
+        // В Журнал Событий запись по Modbus запрещена!
+        if (is_log_db) {
+            Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+            return;
+        }
+
+        // Защита от выхода за границы БД при записи
+        if ((start_addr + reg_count) > db_max_regs || reg_count == 0) {
+            Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+            return;
+        }
+
+        // Запись входящих данных в структуру
         for (int i = 0; i < reg_count; i++) {
             base_ptr[start_addr + i] = (rx_data[7 + i*2] << 8) | rx_data[8 + i*2];
         }
 
-        // Если писали в параметры — обновляем CRC и сохраняем
-        if (base_ptr == (uint16_t *)&DBParameters) {
-            DB_UpdateCRC();
-            // DB_SaveToFlash(); // Опционально: сохранять сразу или по кнопке
+        // Если запись производилась в уставки (DBParameters)
+        if (is_param_db) {
+            DB_UpdateCRC(); // Обновляем контрольную сумму EEPROM/Flash
+
+            // Фиксируем факт изменения уставки в журнале событий
+            Log_Write(LOG_EV_PARAM_CHANGED, LOG_SEV_INFO, DBParameters.f50.as_array[start_addr/2], start_addr);
         }
 
+        // Эхо-ответ стандарта Modbus
         memcpy(tx_buf, rx_data, 6);
         tx_len = 6;
     }
 
-    // Отправка ответа
+    // =========================================================================
+    // --- НЕПОДДЕРЖИВАЕМАЯ ФУНКЦИЯ ---
+    // =========================================================================
+    else {
+        Modbus_SendException(huart, tx_buf, f_code, 0x01); // Illegal Function
+        return;
+    }
+
+    // 4. Расчет CRC16 и отправка ответа по DMA
     if (tx_len > 0) {
         uint16_t res_crc = Modbus_CRC16(tx_buf, tx_len);
         tx_buf[tx_len++] = res_crc & 0xFF;
         tx_buf[tx_len++] = (res_crc >> 8) & 0xFF;
-        //HAL_UART_Transmit(huart, tx_buf, tx_len, 100);
-        // Пишем неблокирующий запуск DMA отправки:
-        // КРИТИЧЕСКИ ВАЖНО ДЛЯ STM32F7: Выталкиваем данные из кэша процессора в физическую RAM memory
-        // без этого DMA отправит старые данные или нули!
-        SCB_CleanDCache_by_Addr((uint32_t *)tx_buf, tx_len);
+
+        // Выравнивание длины до 32 байт для корректного сброса D-Cache
+        uint32_t aligned_len = (tx_len + 31) & ~31;
+        SCB_CleanDCache_by_Addr((uint32_t *)tx_buf, aligned_len);
 
         HAL_UART_Transmit_DMA(huart, tx_buf, tx_len);
     }
 }
+
+//void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t length) {
+//    if (length < 8) return;
+//
+//    // Проверка CRC и Slave ID
+//    uint16_t rx_crc = (rx_data[length-1] << 8) | rx_data[length-2];
+//    if (Modbus_CRC16(rx_data, length - 2) != rx_crc) return;
+//    if (rx_data[0] != 1) return;
+//
+//    uint8_t f_code = rx_data[1];
+//    uint16_t start_addr = (rx_data[2] << 8) | rx_data[3];
+//    uint16_t reg_count = (rx_data[4] << 8) | rx_data[5];
+//
+//    uint8_t *tx_buf = NULL;
+//    uint16_t tx_len = 0;
+//    uint16_t *base_ptr = NULL;
+//    uint16_t db_max_regs = 0; // Максимально доступный размер выбранной БД (в словах)
+//
+//    // 1. ФЛАГ ДЛЯ ОПРЕДЕЛЕНИЯ ВЫБРАННОЙ БАЗЫ ДАННЫХ
+//        bool is_param_db = false;
+//
+//    // 1. Аппаратно разделяем буферы отправки
+//    if (huart->Instance == USART3) {
+//        tx_buf = usart3_tx_buf;
+//    } else if (huart->Instance == USART6) {
+//        tx_buf = usart6_tx_buf;
+//    } else {
+//        return; // Неизвестный интерфейс
+//    }
+//
+//    // Проверяем, свободен ли передатчик DMA
+//    if (huart->gState != HAL_UART_STATE_READY) {
+//        return;
+//    }
+//
+//    // 2. Выбор базы данных и определение жестких границ памяти
+//    if (start_addr < 1000) {
+//        base_ptr = (uint16_t *)&DBParameters;
+//        db_max_regs = sizeof(DBParameters) / sizeof(uint16_t);
+//        is_param_db = true; // <-- Это база уставок (DBParameters)
+//    } else {
+//        base_ptr = (uint16_t *)&DBMain;
+//        db_max_regs = sizeof(DBMain) / sizeof(uint16_t);
+//        start_addr -= 1000;
+//        is_param_db = false; // <-- Это оперативная база (DBMain)
+//    }
+//
+//    // --- ФУНКЦИЯ 03: ЧтениеHolding Registers ---
+//    if (f_code == 0x03) {
+//        // Защита от выхода за границы БД
+//        if ((start_addr + reg_count) > db_max_regs || reg_count == 0) {
+//            Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+//            return;
+//        }
+//        // Защита от переполнения нашего локального tx_buf (обычно 256 байт)
+//        if (3 + (reg_count * 2) + 2 > 256) {
+//            Modbus_SendException(huart, tx_buf, f_code, 0x03); // Illegal Data Value
+//            return;
+//        }
+//
+//        tx_buf[0] = 1;
+//        tx_buf[1] = 0x03;
+//        tx_buf[2] = reg_count * 2;
+//
+//        for (int i = 0; i < reg_count; i++) {
+//            uint16_t val = base_ptr[start_addr + i];
+//            tx_buf[3 + i*2] = (val >> 8) & 0xFF;
+//            tx_buf[4 + i*2] = val & 0xFF;
+//        }
+//        tx_len = 3 + (reg_count * 2);
+//    }
+//
+//    // --- ФУНКЦИЯ 16 (0x10): Запись нескольких регистров ---
+//    else if (f_code == 0x10) {
+//        // Защита от выхода за границы БД при записи
+//        if ((start_addr + reg_count) > db_max_regs || reg_count == 0) {
+//            Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+//            return;
+//        }
+//
+//        // Выполняем безопасную запись данных
+//        for (int i = 0; i < reg_count; i++) {
+//            base_ptr[start_addr + i] = (rx_data[7 + i*2] << 8) | rx_data[8 + i*2];
+//        }
+//
+//        // Если писали в энергонезависимые параметры — обновляем CRC
+//        if (base_ptr == (uint16_t *)&DBParameters) {
+//       // if (is_param_db) {
+//            DB_UpdateCRC();
+//            // Вносим запись в журнал: ИД события, Уровень, Новое значение, Индекс параметра
+//            Log_Write(LOG_EV_PARAM_CHANGED, LOG_SEV_INFO, DBParameters.f50.as_array[start_addr/2], start_addr);
+//
+//        }
+//
+//        // Формируем эхо-ответ
+//        memcpy(tx_buf, rx_data, 6);
+//        tx_len = 6;
+//    }
+//
+//    // --- НЕПОДДЕРЖИВАЕМАЯ ФУНКЦИЯ ---
+//    else {
+//        Modbus_SendException(huart, tx_buf, f_code, 0x01); // Illegal Function
+//        return;
+//    }
+//
+//    // 3. Отправка ответа
+//    if (tx_len > 0) {
+//        uint16_t res_crc = Modbus_CRC16(tx_buf, tx_len);
+//        tx_buf[tx_len++] = res_crc & 0xFF;
+//        tx_buf[tx_len++] = (res_crc >> 8) & 0xFF;
+//
+//        // КРИТИЧЕСКИ ВАЖНО: Округляем размер очистки кэша вверх до размера кэш-линии (32 байта)
+//        // Это предотвращает побочные эффекты D-Cache для соседних ячеек памяти!
+//        uint32_t aligned_len = (tx_len + 31) & ~31;
+//        SCB_CleanDCache_by_Addr((uint32_t *)tx_buf, aligned_len);
+//
+//        HAL_UART_Transmit_DMA(huart, tx_buf, tx_len);
+//    }
+//}
+
+//void Modbus_RTU_Parse(UART_HandleTypeDef *huart,uint8_t *rx_data, uint16_t length) {
+//    if (length < 8) return;
+//
+//    // Проверка CRC и Slave ID (1)
+//    if (Modbus_CRC16(rx_data, length - 2) != ((rx_data[length-1] << 8) | rx_data[length-2])) return;
+//    if (rx_data[0] != 1) return;
+//
+//    uint8_t f_code = rx_data[1];
+//    uint16_t start_addr = (rx_data[2] << 8) | rx_data[3];
+//    uint16_t reg_count = (rx_data[4] << 8) | rx_data[5];
+//
+//    //uint8_t tx_buf[256];
+//    uint8_t *tx_buf = NULL;
+//    uint16_t tx_len = 0;
+//    uint16_t *base_ptr = NULL;
+//
+//    // 1. Аппаратно разделяем буферы отправки, чтобы USART3 и USART6 не терли данные друг другу
+//        if (huart->Instance == USART3) {
+//            tx_buf = usart3_tx_buf;
+//        } else if (huart->Instance == USART6) {
+//            tx_buf = usart6_tx_buf;
+//        } else {
+//            return; // Неизвестный UART
+//        }
+//
+//        // Проверяем, не занят ли DMA отправкой предыдущего пакета этого интерфейса!
+//        if (huart->gState != HAL_UART_STATE_READY) {
+//            return; // Если прошлый пакет еще шлется, игнорируем новый, чтобы не вызвать аппаратную ошибку
+//        }
+//
+//    // Выбор базы данных
+//    if (start_addr < 1000) {
+//        base_ptr = (uint16_t *)&DBParameters;
+//    } else {
+//        base_ptr = (uint16_t *)&DBMain;
+//        start_addr -= 1000;
+//    }
+//
+//    // --- Функция 03: Чтение ---
+//    if (f_code == 0x03) {
+//        tx_buf[0] = 1; tx_buf[1] = 0x03; tx_buf[2] = reg_count * 2;
+//        for (int i = 0; i < reg_count; i++) {
+//            uint16_t val = base_ptr[start_addr + i];
+//            tx_buf[3 + i*2] = (val >> 8) & 0xFF;
+//            tx_buf[4 + i*2] = val & 0xFF;
+//        }
+//        tx_len = 3 + (reg_count * 2);
+//    }
+//    // --- Функция 16 (0x10): Запись нескольких регистров ---
+//    // Weintek шлет именно её для 32-битных данных
+//    else if (f_code == 0x10) {
+//        for (int i = 0; i < reg_count; i++) {
+//            base_ptr[start_addr + i] = (rx_data[7 + i*2] << 8) | rx_data[8 + i*2];
+//        }
+//
+//        // Если писали в параметры — обновляем CRC и сохраняем
+//        if (base_ptr == (uint16_t *)&DBParameters) {
+//            DB_UpdateCRC();
+//            // DB_SaveToFlash(); // Опционально: сохранять сразу или по кнопке
+//        }
+//
+//        memcpy(tx_buf, rx_data, 6);
+//        tx_len = 6;
+//    }
+//
+//    // Отправка ответа
+//    if (tx_len > 0) {
+//        uint16_t res_crc = Modbus_CRC16(tx_buf, tx_len);
+//        tx_buf[tx_len++] = res_crc & 0xFF;
+//        tx_buf[tx_len++] = (res_crc >> 8) & 0xFF;
+//        //HAL_UART_Transmit(huart, tx_buf, tx_len, 100);
+//        // Пишем неблокирующий запуск DMA отправки:
+//        // КРИТИЧЕСКИ ВАЖНО ДЛЯ STM32F7: Выталкиваем данные из кэша процессора в физическую RAM memory
+//        // без этого DMA отправит старые данные или нули!
+//        SCB_CleanDCache_by_Addr((uint32_t *)tx_buf, tx_len);
+//
+//        HAL_UART_Transmit_DMA(huart, tx_buf, tx_len);
+//    }
+//}
 
 //void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t length) {
 //    if (length < 8) return;
