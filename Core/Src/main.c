@@ -38,6 +38,7 @@
 #include "Block_Synhro.h"
 #include "Block_Sifu.h"
 #include "event_log.h"
+#include "trace_buffer.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -240,6 +241,8 @@ int main(void)
 
     // Инициализация оперативного журнала
     Log_Init();
+    // Инициализация буфера следа
+    Trace_Init();
 
   /* USER CODE END 2 */
 
@@ -317,7 +320,16 @@ int main(void)
 
   while (1)
   {
-	  	  if(filterDI){
+	    if(DBParameters.b96.bit2==1)
+	    {
+	    	Trace_Stop();
+	    }
+	    else if(DBParameters.b96.bit1==1)
+	    {
+	    	Trace_Start();
+	    }
+
+	     if(filterDI){
 	    	  if (HAL_GetTick() - DI_Timer >= 1) {
 	    	  	      DI_Timer +=1;//DI_Timer = HAL_GetTick();
 	    	          Read_DI_Input_Filtered(); // Выполняется в основном потоке раз в 1 мс
@@ -1759,11 +1771,12 @@ void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t leng
     uint8_t *tx_buf = NULL;
     uint16_t tx_len = 0;
     uint16_t *base_ptr = NULL;
-    uint16_t db_max_regs = 0; // Максимальный размер выбранной БД (в словах)
+    uint16_t db_max_regs = 0;
 
     // Флаги типа выбранного адреса
     bool is_param_db = false;
     bool is_log_db   = false;
+    bool is_trace_db = false;
 
     // 2. Аппаратно разделяем буферы отправки DMA
     if (huart->Instance == USART3) {
@@ -1771,10 +1784,9 @@ void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t leng
     } else if (huart->Instance == USART6) {
         tx_buf = usart6_tx_buf;
     } else {
-        return; // Неизвестный интерфейс
+        return;
     }
 
-    // Проверяем, свободен ли передатчик DMA
     if (huart->gState != HAL_UART_STATE_READY) {
         return;
     }
@@ -1793,9 +1805,13 @@ void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t leng
         start_addr -= 1000;
         is_param_db = false;
     }
-    else {
-        // --- Зона 2000+: Журнал Событий (EventLogBuffer) ---
+    else if (start_addr >= 2000 && start_addr < 3000) {
+        // --- Зона 2000..2999: Журнал Событий (EventLogBuffer) ---
         is_log_db = true;
+    }
+    else {
+        // --- Зона 3000+: Высокоскоростной След (TraceBuffer) ---
+        is_trace_db = true;
     }
 
     // =========================================================================
@@ -1804,46 +1820,41 @@ void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t leng
     if (f_code == 0x03) {
 
         // ---------------------------------------------------------------------
-        // ВЕТКА А: Чтение из Журнала Событий (Стратегия 1: Логическая адресация)
+        // ВЕТКА А: Чтение из Журнала Событий (EventLogBuffer)
         // ---------------------------------------------------------------------
         if (is_log_db) {
-
             // 1. Запрос статистики журнала (Адрес 2000, 3 регистра)
             if (start_addr == 2000 && reg_count == 3) {
                 tx_buf[0] = 1;
                 tx_buf[1] = 0x03;
-                tx_buf[2] = 6; // 3 регистра * 2 байта
+                tx_buf[2] = 6;
 
                 uint32_t total = EventLogBuffer.total_recorded;
                 uint16_t count = (uint16_t)EventLogBuffer.count;
 
-                // Упаковка total_recorded (uint32_t -> 4 байта)
                 tx_buf[3] = (total >> 24) & 0xFF;
                 tx_buf[4] = (total >> 16) & 0xFF;
                 tx_buf[5] = (total >> 8)  & 0xFF;
                 tx_buf[6] = total & 0xFF;
 
-                // Упаковка count (uint16_t -> 2 байта)
                 tx_buf[7] = (count >> 8) & 0xFF;
                 tx_buf[8] = count & 0xFF;
 
                 tx_len = 9;
             }
-
-            // 2. Запрос пачки записей журнала (Адреса 2010+, reg_count кратен 8)
+            // 2. Запрос пачки записей журнала (Адрес 2010+, reg_count кратен 8)
             else if (start_addr >= 2010 && (reg_count % 8) == 0) {
-                uint32_t start_depth = (start_addr - 2010) / 8; // Глубина поиска
-                uint16_t entries_requested = reg_count / 8;     // Кол-во записей
+                uint32_t start_depth = (start_addr - 2010) / 8;
+                uint16_t entries_requested = reg_count / 8;
 
-                // Ограничение размера пакета (максимум 15 записей = 120 регистров)
                 if (entries_requested > 15 || (3 + (reg_count * 2) + 2) > 256) {
-                    Modbus_SendException(huart, tx_buf, f_code, 0x03); // Illegal Data Value
+                    Modbus_SendException(huart, tx_buf, f_code, 0x03);
                     return;
                 }
 
                 tx_buf[0] = 1;
                 tx_buf[1] = 0x03;
-                tx_buf[2] = entries_requested * 16; // По 16 байт на запись
+                tx_buf[2] = entries_requested * 16;
 
                 uint16_t tx_idx = 3;
 
@@ -1851,24 +1862,18 @@ void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t leng
                     LogEntry_t entry;
                     uint32_t current_depth = start_depth + i;
 
-                    // Вычитываем запись хронологически из ring-буфера
                     if (Log_GetEntry(current_depth, &entry)) {
-
-                        // timestamp (uint32_t)
                         tx_buf[tx_idx++] = (entry.timestamp >> 24) & 0xFF;
                         tx_buf[tx_idx++] = (entry.timestamp >> 16) & 0xFF;
                         tx_buf[tx_idx++] = (entry.timestamp >> 8)  & 0xFF;
                         tx_buf[tx_idx++] = entry.timestamp & 0xFF;
 
-                        // event_id (uint16_t)
                         tx_buf[tx_idx++] = (entry.event_id >> 8) & 0xFF;
                         tx_buf[tx_idx++] = entry.event_id & 0xFF;
 
-                        // severity & flags (uint8_t)
                         tx_buf[tx_idx++] = entry.severity;
                         tx_buf[tx_idx++] = entry.flags;
 
-                        // value (float)
                         uint32_t val_raw;
                         memcpy(&val_raw, &entry.value, sizeof(float));
                         tx_buf[tx_idx++] = (val_raw >> 24) & 0xFF;
@@ -1876,37 +1881,121 @@ void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t leng
                         tx_buf[tx_idx++] = (val_raw >> 8)  & 0xFF;
                         tx_buf[tx_idx++] = val_raw & 0xFF;
 
-                        // param_id (uint32_t)
                         tx_buf[tx_idx++] = (entry.param_id >> 24) & 0xFF;
                         tx_buf[tx_idx++] = (entry.param_id >> 16) & 0xFF;
                         tx_buf[tx_idx++] = (entry.param_id >> 8)  & 0xFF;
                         tx_buf[tx_idx++] = entry.param_id & 0xFF;
-
                     } else {
-                        // Если зашли за пределы имеющихся записей — забиваем нулями
                         memset(&tx_buf[tx_idx], 0, 16);
                         tx_idx += 16;
                     }
                 }
-
                 tx_len = tx_idx;
             }
             else {
-                Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+                Modbus_SendException(huart, tx_buf, f_code, 0x02);
                 return;
             }
         }
 
         // ---------------------------------------------------------------------
-        // ВЕТКА Б: Обычное чтение структуры DBParameters или DBMain
+        // ВЕТКА Б: Чтение из Высокоскоростного Следа (TraceBuffer + Snapshot)
+        // ---------------------------------------------------------------------
+        else if (is_trace_db) {
+
+            // 1. Запрос статуса следа (Адрес 3000, 4 регистра = 8 байт)
+            if (start_addr == 3000 && reg_count == 4) {
+
+                // АТОМАРНЫЙ СНИМОК: Копируем весь кольцевой буфер в g_traceSnapshot за ~5 мкс
+                __disable_irq();
+                memcpy((void*)&g_traceSnapshot, (void*)&g_traceBuffer, sizeof(TraceBuffer_t));
+                __enable_irq();
+
+                tx_buf[0] = 1;
+                tx_buf[1] = 0x03;
+                tx_buf[2] = 8; // 4 регистра * 2 байта
+
+                uint16_t head       = g_traceSnapshot.head;
+                uint8_t  is_running = g_traceSnapshot.is_running;
+                uint8_t  is_full    = g_traceSnapshot.is_full;
+                uint32_t samples    = g_traceSnapshot.sample_count;
+
+                    // Reg 3000: head (uint16_t)
+                tx_buf[3] = (head >> 8) & 0xFF;
+                tx_buf[4] = head & 0xFF;
+
+                    // Reg 3001: is_running (High byte) + is_full (Low byte)
+                tx_buf[5] = is_running;
+                tx_buf[6] = is_full;
+
+                // Reg 3002..3003: sample_count (uint32_t)
+                tx_buf[7] = (samples >> 24) & 0xFF;
+                tx_buf[8] = (samples >> 16) & 0xFF;
+                tx_buf[9] = (samples >> 8)  & 0xFF;
+                tx_buf[10] = samples & 0xFF;
+
+                tx_len = 11;
+            }
+
+            // 2. Запрос пачки точек следа (Адрес 3010+, reg_count кратен 4)
+            else if (start_addr >= 3010 && (reg_count % 4) == 0) {
+                uint32_t start_point = (start_addr - 3010) / 4; // Индекс точки (0..999)
+                uint16_t points_requested = reg_count / 4;     // Кол-во точек
+
+                // Ограничение: макс 30 точек за 1 запрос (120 регистров = 240 байт)
+                if (points_requested > 30 || (start_point + points_requested) > TRACE_SAMPLES) {
+                    Modbus_SendException(huart, tx_buf, f_code, 0x03);
+                    return;
+                }
+
+                tx_buf[0] = 1;
+                tx_buf[1] = 0x03;
+                tx_buf[2] = points_requested * 8; // 8 байт на точку (2x float)
+
+                uint16_t tx_idx = 3;
+
+                for (uint16_t i = 0; i < points_requested; i++) {
+                    uint32_t idx = start_point + i;
+
+                    // ВЫЧИТЫВАЕМ ИЗ СНИМКА (g_traceSnapshot), исключая data tearing!
+                    float u_val = g_traceSnapshot.data[idx].useti;
+                    float i_val = g_traceSnapshot.data[idx].iakb;
+
+                    uint32_t u_raw, i_raw;
+                    memcpy(&u_raw, &u_val, sizeof(float));
+                    memcpy(&i_raw, &i_val, sizeof(float));
+
+                    // Useti (float -> 4 байта)
+                    tx_buf[tx_idx++] = (u_raw >> 24) & 0xFF;
+                    tx_buf[tx_idx++] = (u_raw >> 16) & 0xFF;
+                    tx_buf[tx_idx++] = (u_raw >> 8)  & 0xFF;
+                    tx_buf[tx_idx++] = u_raw & 0xFF;
+
+                    // Iakb (float -> 4 байта)
+                    tx_buf[tx_idx++] = (i_raw >> 24) & 0xFF;
+                    tx_buf[tx_idx++] = (i_raw >> 16) & 0xFF;
+                    tx_buf[tx_idx++] = (i_raw >> 8)  & 0xFF;
+                    tx_buf[tx_idx++] = i_raw & 0xFF;
+                }
+
+                tx_len = tx_idx;
+            }
+            else {
+                Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Address
+                return;
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // ВЕТКА В: Обычное чтение структуры DBParameters или DBMain
         // ---------------------------------------------------------------------
         else {
             if ((start_addr + reg_count) > db_max_regs || reg_count == 0) {
-                Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+                Modbus_SendException(huart, tx_buf, f_code, 0x02);
                 return;
             }
             if (3 + (reg_count * 2) + 2 > 256) {
-                Modbus_SendException(huart, tx_buf, f_code, 0x03); // Illegal Data Value
+                Modbus_SendException(huart, tx_buf, f_code, 0x03);
                 return;
             }
 
@@ -1928,41 +2017,56 @@ void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t leng
     // =========================================================================
     else if (f_code == 0x10) {
 
-        // В Журнал Событий запись по Modbus запрещена!
+        // В Журнал Событий запись запрещена!
         if (is_log_db) {
-            Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+            Modbus_SendException(huart, tx_buf, f_code, 0x02);
             return;
         }
 
-        // Защита от выхода за границы БД при записи
-        if ((start_addr + reg_count) > db_max_regs || reg_count == 0) {
-            Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
-            return;
+        // --- Управление Следом (Команды Старт / Стоп) ---
+        if (is_trace_db) {
+            if (start_addr == 3000 && reg_count == 1) {
+                uint16_t cmd = (rx_data[7] << 8) | rx_data[8];
+                if (cmd == 1) {
+                    Trace_Start();
+                } else if (cmd == 0) {
+                    Trace_Stop();
+                }
+
+                // Эхо-ответ стандарта Modbus
+                memcpy(tx_buf, rx_data, 6);
+                tx_len = 6;
+            } else {
+                Modbus_SendException(huart, tx_buf, f_code, 0x02);
+                return;
+            }
         }
+        // --- Обычная запись в DBParameters / DBMain ---
+        else {
+            if ((start_addr + reg_count) > db_max_regs || reg_count == 0) {
+                Modbus_SendException(huart, tx_buf, f_code, 0x02);
+                return;
+            }
 
-        // Запись входящих данных в структуру
-        for (int i = 0; i < reg_count; i++) {
-            base_ptr[start_addr + i] = (rx_data[7 + i*2] << 8) | rx_data[8 + i*2];
+            for (int i = 0; i < reg_count; i++) {
+                base_ptr[start_addr + i] = (rx_data[7 + i*2] << 8) | rx_data[8 + i*2];
+            }
+
+            if (is_param_db) {
+                DB_UpdateCRC();
+                Log_Write(LOG_EV_PARAM_CHANGED, LOG_SEV_INFO, DBParameters.f50.as_array[start_addr/2], start_addr);
+            }
+
+            memcpy(tx_buf, rx_data, 6);
+            tx_len = 6;
         }
-
-        // Если запись производилась в уставки (DBParameters)
-        if (is_param_db) {
-            DB_UpdateCRC(); // Обновляем контрольную сумму EEPROM/Flash
-
-            // Фиксируем факт изменения уставки в журнале событий
-            Log_Write(LOG_EV_PARAM_CHANGED, LOG_SEV_INFO, DBParameters.f50.as_array[start_addr/2], start_addr);
-        }
-
-        // Эхо-ответ стандарта Modbus
-        memcpy(tx_buf, rx_data, 6);
-        tx_len = 6;
     }
 
     // =========================================================================
     // --- НЕПОДДЕРЖИВАЕМАЯ ФУНКЦИЯ ---
     // =========================================================================
     else {
-        Modbus_SendException(huart, tx_buf, f_code, 0x01); // Illegal Function
+        Modbus_SendException(huart, tx_buf, f_code, 0x01);
         return;
     }
 
@@ -1979,6 +2083,242 @@ void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t leng
         HAL_UART_Transmit_DMA(huart, tx_buf, tx_len);
     }
 }
+
+//void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t length) {
+//    if (length < 8) return;
+//
+//    // 1. Проверка CRC16 и Slave ID
+//    uint16_t rx_crc = (rx_data[length-1] << 8) | rx_data[length-2];
+//    if (Modbus_CRC16(rx_data, length - 2) != rx_crc) return;
+//    if (rx_data[0] != 1) return; // Наш адрес Modbus = 1
+//
+//    uint8_t f_code = rx_data[1];
+//    uint16_t start_addr = (rx_data[2] << 8) | rx_data[3];
+//    uint16_t reg_count = (rx_data[4] << 8) | rx_data[5];
+//
+//    uint8_t *tx_buf = NULL;
+//    uint16_t tx_len = 0;
+//    uint16_t *base_ptr = NULL;
+//    uint16_t db_max_regs = 0; // Максимальный размер выбранной БД (в словах)
+//
+//    // Флаги типа выбранного адреса
+//    bool is_param_db = false;
+//    bool is_log_db   = false;
+//
+//    // 2. Аппаратно разделяем буферы отправки DMA
+//    if (huart->Instance == USART3) {
+//        tx_buf = usart3_tx_buf;
+//    } else if (huart->Instance == USART6) {
+//        tx_buf = usart6_tx_buf;
+//    } else {
+//        return; // Неизвестный интерфейс
+//    }
+//
+//    // Проверяем, свободен ли передатчик DMA
+//    if (huart->gState != HAL_UART_STATE_READY) {
+//        return;
+//    }
+//
+//    // 3. Маршрутизация по адресам памяти
+//    if (start_addr < 1000) {
+//        // --- Зона 0..999: DBParameters (Уставки) ---
+//        base_ptr = (uint16_t *)&DBParameters;
+//        db_max_regs = sizeof(DBParameters) / sizeof(uint16_t);
+//        is_param_db = true;
+//    }
+//    else if (start_addr >= 1000 && start_addr < 2000) {
+//        // --- Зона 1000..1999: DBMain (Оперативные данные) ---
+//        base_ptr = (uint16_t *)&DBMain;
+//        db_max_regs = sizeof(DBMain) / sizeof(uint16_t);
+//        start_addr -= 1000;
+//        is_param_db = false;
+//    }
+//    else {
+//        // --- Зона 2000+: Журнал Событий (EventLogBuffer) ---
+//        is_log_db = true;
+//    }
+//
+//    // =========================================================================
+//    // --- ФУНКЦИЯ 03 (0x03): Чтение Holding Registers ---
+//    // =========================================================================
+//    if (f_code == 0x03) {
+//
+//        // ---------------------------------------------------------------------
+//        // ВЕТКА А: Чтение из Журнала Событий (Стратегия 1: Логическая адресация)
+//        // ---------------------------------------------------------------------
+//        if (is_log_db) {
+//
+//            // 1. Запрос статистики журнала (Адрес 2000, 3 регистра)
+//            if (start_addr == 2000 && reg_count == 3) {
+//                tx_buf[0] = 1;
+//                tx_buf[1] = 0x03;
+//                tx_buf[2] = 6; // 3 регистра * 2 байта
+//
+//                uint32_t total = EventLogBuffer.total_recorded;
+//                uint16_t count = (uint16_t)EventLogBuffer.count;
+//
+//                // Упаковка total_recorded (uint32_t -> 4 байта)
+//                tx_buf[3] = (total >> 24) & 0xFF;
+//                tx_buf[4] = (total >> 16) & 0xFF;
+//                tx_buf[5] = (total >> 8)  & 0xFF;
+//                tx_buf[6] = total & 0xFF;
+//
+//                // Упаковка count (uint16_t -> 2 байта)
+//                tx_buf[7] = (count >> 8) & 0xFF;
+//                tx_buf[8] = count & 0xFF;
+//
+//                tx_len = 9;
+//            }
+//
+//            // 2. Запрос пачки записей журнала (Адреса 2010+, reg_count кратен 8)
+//            else if (start_addr >= 2010 && (reg_count % 8) == 0) {
+//                uint32_t start_depth = (start_addr - 2010) / 8; // Глубина поиска
+//                uint16_t entries_requested = reg_count / 8;     // Кол-во записей
+//
+//                // Ограничение размера пакета (максимум 15 записей = 120 регистров)
+//                if (entries_requested > 15 || (3 + (reg_count * 2) + 2) > 256) {
+//                    Modbus_SendException(huart, tx_buf, f_code, 0x03); // Illegal Data Value
+//                    return;
+//                }
+//
+//                tx_buf[0] = 1;
+//                tx_buf[1] = 0x03;
+//                tx_buf[2] = entries_requested * 16; // По 16 байт на запись
+//
+//                uint16_t tx_idx = 3;
+//
+//                for (uint16_t i = 0; i < entries_requested; i++) {
+//                    LogEntry_t entry;
+//                    uint32_t current_depth = start_depth + i;
+//
+//                    // Вычитываем запись хронологически из ring-буфера
+//                    if (Log_GetEntry(current_depth, &entry)) {
+//
+//                        // timestamp (uint32_t)
+//                        tx_buf[tx_idx++] = (entry.timestamp >> 24) & 0xFF;
+//                        tx_buf[tx_idx++] = (entry.timestamp >> 16) & 0xFF;
+//                        tx_buf[tx_idx++] = (entry.timestamp >> 8)  & 0xFF;
+//                        tx_buf[tx_idx++] = entry.timestamp & 0xFF;
+//
+//                        // event_id (uint16_t)
+//                        tx_buf[tx_idx++] = (entry.event_id >> 8) & 0xFF;
+//                        tx_buf[tx_idx++] = entry.event_id & 0xFF;
+//
+//                        // severity & flags (uint8_t)
+//                        tx_buf[tx_idx++] = entry.severity;
+//                        tx_buf[tx_idx++] = entry.flags;
+//
+//                        // value (float)
+//                        uint32_t val_raw;
+//                        memcpy(&val_raw, &entry.value, sizeof(float));
+//                        tx_buf[tx_idx++] = (val_raw >> 24) & 0xFF;
+//                        tx_buf[tx_idx++] = (val_raw >> 16) & 0xFF;
+//                        tx_buf[tx_idx++] = (val_raw >> 8)  & 0xFF;
+//                        tx_buf[tx_idx++] = val_raw & 0xFF;
+//
+//                        // param_id (uint32_t)
+//                        tx_buf[tx_idx++] = (entry.param_id >> 24) & 0xFF;
+//                        tx_buf[tx_idx++] = (entry.param_id >> 16) & 0xFF;
+//                        tx_buf[tx_idx++] = (entry.param_id >> 8)  & 0xFF;
+//                        tx_buf[tx_idx++] = entry.param_id & 0xFF;
+//
+//                    } else {
+//                        // Если зашли за пределы имеющихся записей — забиваем нулями
+//                        memset(&tx_buf[tx_idx], 0, 16);
+//                        tx_idx += 16;
+//                    }
+//                }
+//
+//                tx_len = tx_idx;
+//            }
+//            else {
+//                Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+//                return;
+//            }
+//        }
+//
+//        // ---------------------------------------------------------------------
+//        // ВЕТКА Б: Обычное чтение структуры DBParameters или DBMain
+//        // ---------------------------------------------------------------------
+//        else {
+//            if ((start_addr + reg_count) > db_max_regs || reg_count == 0) {
+//                Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+//                return;
+//            }
+//            if (3 + (reg_count * 2) + 2 > 256) {
+//                Modbus_SendException(huart, tx_buf, f_code, 0x03); // Illegal Data Value
+//                return;
+//            }
+//
+//            tx_buf[0] = 1;
+//            tx_buf[1] = 0x03;
+//            tx_buf[2] = reg_count * 2;
+//
+//            for (int i = 0; i < reg_count; i++) {
+//                uint16_t val = base_ptr[start_addr + i];
+//                tx_buf[3 + i*2] = (val >> 8) & 0xFF;
+//                tx_buf[4 + i*2] = val & 0xFF;
+//            }
+//            tx_len = 3 + (reg_count * 2);
+//        }
+//    }
+//
+//    // =========================================================================
+//    // --- ФУНКЦИЯ 16 (0x10): Запись нескольких регистров ---
+//    // =========================================================================
+//    else if (f_code == 0x10) {
+//
+//        // В Журнал Событий запись по Modbus запрещена!
+//        if (is_log_db) {
+//            Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+//            return;
+//        }
+//
+//        // Защита от выхода за границы БД при записи
+//        if ((start_addr + reg_count) > db_max_regs || reg_count == 0) {
+//            Modbus_SendException(huart, tx_buf, f_code, 0x02); // Illegal Data Address
+//            return;
+//        }
+//
+//        // Запись входящих данных в структуру
+//        for (int i = 0; i < reg_count; i++) {
+//            base_ptr[start_addr + i] = (rx_data[7 + i*2] << 8) | rx_data[8 + i*2];
+//        }
+//
+//        // Если запись производилась в уставки (DBParameters)
+//        if (is_param_db) {
+//            DB_UpdateCRC(); // Обновляем контрольную сумму EEPROM/Flash
+//
+//            // Фиксируем факт изменения уставки в журнале событий
+//            Log_Write(LOG_EV_PARAM_CHANGED, LOG_SEV_INFO, DBParameters.f50.as_array[start_addr/2], start_addr);
+//        }
+//
+//        // Эхо-ответ стандарта Modbus
+//        memcpy(tx_buf, rx_data, 6);
+//        tx_len = 6;
+//    }
+//
+//    // =========================================================================
+//    // --- НЕПОДДЕРЖИВАЕМАЯ ФУНКЦИЯ ---
+//    // =========================================================================
+//    else {
+//        Modbus_SendException(huart, tx_buf, f_code, 0x01); // Illegal Function
+//        return;
+//    }
+//
+//    // 4. Расчет CRC16 и отправка ответа по DMA
+//    if (tx_len > 0) {
+//        uint16_t res_crc = Modbus_CRC16(tx_buf, tx_len);
+//        tx_buf[tx_len++] = res_crc & 0xFF;
+//        tx_buf[tx_len++] = (res_crc >> 8) & 0xFF;
+//
+//        // Выравнивание длины до 32 байт для корректного сброса D-Cache
+//        uint32_t aligned_len = (tx_len + 31) & ~31;
+//        SCB_CleanDCache_by_Addr((uint32_t *)tx_buf, aligned_len);
+//
+//        HAL_UART_Transmit_DMA(huart, tx_buf, tx_len);
+//    }
+//}
 
 //void Modbus_RTU_Parse(UART_HandleTypeDef *huart, uint8_t *rx_data, uint16_t length) {
 //    if (length < 8) return;

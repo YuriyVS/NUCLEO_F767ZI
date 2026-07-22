@@ -15,6 +15,7 @@
 "./Core/Src/syscalls.o"
 "./Core/Src/sysmem.o"
 "./Core/Src/system_stm32f7xx.o"
+"./Core/Src/trace_buffer.o"
 "./Core/Src/web_server.o"
 "./Core/Startup/startup_stm32f767zitx.o"
 "./Drivers/BSP/Components/lan8742/lan8742.o"

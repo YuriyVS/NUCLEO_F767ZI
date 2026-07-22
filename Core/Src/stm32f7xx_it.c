@@ -28,6 +28,7 @@
 #include "Block_Synhro.h"
 #include "Block_Sifu.h"
 #include "Reg_System.h"
+#include "trace_buffer.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -206,6 +207,10 @@ void SysTick_Handler(void)
   // проверяем чередование и формируем сигнал готовности сети
   //  Sync_CheckSequence();
     Sifu_CaptureTraceSample();
+
+
+    /* Записываем сэмпл в кольцевой буфер следа каждые 1 мс */
+    Trace_Process_1ms(DBMain.f50.Useti, DBMain.f50.Iakb);
 
   /* USER CODE END SysTick_IRQn 1 */
 }

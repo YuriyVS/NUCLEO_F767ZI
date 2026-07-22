@@ -1,0 +1,4 @@
+../Core/Src/trace_buffer.c:8:6:Trace_Init	1
+../Core/Src/trace_buffer.c:19:6:Trace_Start	1
+../Core/Src/trace_buffer.c:24:6:Trace_Stop	1
+../Core/Src/trace_buffer.c:29:6:Trace_Process_1ms	3
