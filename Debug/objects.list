@@ -1,5 +1,6 @@
 "./Core/Src/AI_Normalisation.o"
 "./Core/Src/AO_Normalisation.o"
+"./Core/Src/Block_RTC.o"
 "./Core/Src/Block_Sifu.o"
 "./Core/Src/Block_Synhro.o"
 "./Core/Src/DB_Constants.o"

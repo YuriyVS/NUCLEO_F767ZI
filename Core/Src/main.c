@@ -39,6 +39,7 @@
 #include "Block_Sifu.h"
 #include "event_log.h"
 #include "trace_buffer.h"
+#include "Block_RTC.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,6 +63,8 @@ CAN_HandleTypeDef hcan1;
 
 CRC_HandleTypeDef hcrc;
 
+I2C_HandleTypeDef hi2c1;
+
 UART_HandleTypeDef huart3;
 UART_HandleTypeDef huart6;
 DMA_HandleTypeDef hdma_usart3_rx;
@@ -72,6 +75,7 @@ DMA_HandleTypeDef hdma_usart6_tx;
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
+RTC_DateTime_t SystemTime;
 extern UART_HandleTypeDef huart3; // Кажемо компілятору: "huart3 оголошена десь в іншому місці"
 extern UART_HandleTypeDef huart6; // Кажемо компілятору: "huart6 оголошена десь в іншому місці"
 uint16_t Modbus_Registers[10] = {0}; // Наші Holding Registers
@@ -125,6 +129,7 @@ static void MX_TIM6_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM8_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 void MPU_Config(void);
 uint16_t Modbus_CRC16(uint8_t *buffer, uint16_t length);
@@ -216,7 +221,9 @@ int main(void)
   MX_TIM4_Init();
   MX_TIM8_Init();
   MX_TIM3_Init();
+  //MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+
   LL_TIM_ClearFlag_UPDATE(TIM6);     // Очищаем стартовый флаг
   LL_TIM_EnableIT_UPDATE(TIM6);      // Разрешаем прерывание по переполнению
   LL_TIM_EnableCounter(TIM6);        // Старт! TIM6 начал отсчет имитации 50Гц
@@ -294,8 +301,7 @@ int main(void)
   LL_DAC_Enable(DAC1, LL_DAC_CHANNEL_1);
   LL_DAC_Enable(DAC1, LL_DAC_CHANNEL_2);
   DI_Timer = HAL_GetTick();
-  new_tick_ai = DWT->CYCCNT;
-  last_tick_ai = new_tick_ai;
+
   float K = (float)(TIM3->PSC + 1);
 
       // 2. Проверка чередования фаз
@@ -317,9 +323,78 @@ int main(void)
       current_ccr6=0;
       Sifu_DisableAll();
 
+      HAL_Delay(100);
+      Block_RTC_Init();
+
+      /* Читаем текущие данные при старте (блокирующий режим) */
+          Block_RTC_ReadDateTime_Blocking(&SystemTime);
+
+          /* Если батарейка сажалась или была впервые вставлена — выставляем время */
+          if (SystemTime.time_valid == 0)
+          {
+              RTC_DateTime_t new_time = {
+                  .seconds = 0,
+                  .minutes = 0,
+                  .hours = 12,
+                  .day_of_week = 4, // Четверг
+                  .day = 30,
+                  .month = 7,
+                  .year = 26,     // 2026 год
+              };
+              Block_RTC_SetDateTime(&new_time);
+          }
+          __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_3);
+              g_rtc_1hz_flag = 0;
+              g_rtc_rx_cplt_flag = 0;
+
+      new_tick_ai = DWT->CYCCNT;
+      last_tick_ai = new_tick_ai;
 
   while (1)
   {
+
+	  /* Этап А: Синхронизация фонового чтения строго по секундному импульсу с PE3 */
+	          if (g_rtc_1hz_flag)
+	          {
+	              g_rtc_1hz_flag = 0;
+
+	              // Запускаем асинхронное чтение 7 байт времени через DMA (без загрузки ядра)
+	              Block_RTC_ReadDateTime_DMA();
+	          }
+
+	          /* Этап Б: Приход данных по DMA завершился */
+	          if (g_rtc_rx_cplt_flag)
+	          {
+	              g_rtc_rx_cplt_flag = 0;
+
+	              // Разбираем принятый массив в структуру
+	              Block_RTC_ParseDmaBuffer(&SystemTime);
+	              DBMain.u50.uval1 = SystemTime.hours;
+	              DBMain.u50.uval2 = SystemTime.minutes;
+	              DBMain.u50.uval3 = SystemTime.seconds;
+	              DBMain.f100.fval1 = SystemTime.temperature;
+	              DBMain.u50.uval11 = SystemTime.year;
+	              DBMain.u50.uval12 = SystemTime.month;
+	              DBMain.u50.uval13 = SystemTime.day;
+
+	              // Данные времени в SystemTime обновлены!
+	          }
+
+	          if(DBParameters.u50.uset41 !=0)
+	          {
+	        	  RTC_DateTime_t new_time = {
+	        	                    .seconds = DBParameters.u50.uset23,
+	        	                    .minutes = DBParameters.u50.uset22,
+	        	                    .hours = DBParameters.u50.uset21,
+	        	                    .day_of_week = DBParameters.u50.uset34, // Четверг
+	        	                    .day = DBParameters.u50.uset33,
+	        	                    .month = DBParameters.u50.uset32,
+	        	                    .year = DBParameters.u50.uset31,     // 2026 год
+	        	                };
+	        	                Block_RTC_SetDateTime(&new_time);
+	        	                DBParameters.u50.uset41 = 0;
+	          }
+
 	    if(DBParameters.b96.bit2==1)
 	    {
 	    	Trace_Stop();
@@ -327,6 +402,9 @@ int main(void)
 	    else if(DBParameters.b96.bit1==1)
 	    {
 	    	Trace_Start();
+	    }
+	    if(DBMain.f50.Iakb > 40.0){
+	    	Trace_Stop();
 	    }
 
 	     if(filterDI){
@@ -447,7 +525,7 @@ int main(void)
 
 		          // Ток АКБ
 		          Process_AO(&AO_Iakb, DBMain.f50.Iakb, DBParameters.f100.P81_2, DBParameters.f100.P81_3, DBParameters.f100.P81_5);
-		          DBMain.f50.IakbA = DBMain.f50.Iakb * DBParameters.f100.P81_4 * 0.01f; //A
+
 		  }
 
 		  if (Modbus6_New_Packet_Flag) {
@@ -802,6 +880,54 @@ static void MX_DAC_Init(void)
   /* USER CODE BEGIN DAC_Init 2 */
 
   /* USER CODE END DAC_Init 2 */
+
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing = 0x20303E5D;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
 
 }
 
@@ -1330,6 +1456,9 @@ static void MX_GPIO_Init(void)
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTE, LL_SYSCFG_EXTI_LINE2);
 
   /**/
+  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTE, LL_SYSCFG_EXTI_LINE3);
+
+  /**/
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTC, LL_SYSCFG_EXTI_LINE13);
 
   /**/
@@ -1340,6 +1469,13 @@ static void MX_GPIO_Init(void)
 
   /**/
   EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_2;
+  EXTI_InitStruct.LineCommand = ENABLE;
+  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
+  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
+  LL_EXTI_Init(&EXTI_InitStruct);
+
+  /**/
+  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_3;
   EXTI_InitStruct.LineCommand = ENABLE;
   EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
   EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
@@ -1370,6 +1506,9 @@ static void MX_GPIO_Init(void)
   LL_GPIO_SetPinPull(DI_CountImpuls3_GPIO_Port, DI_CountImpuls3_Pin, LL_GPIO_PULL_NO);
 
   /**/
+  LL_GPIO_SetPinPull(GPIOE, LL_GPIO_PIN_3, LL_GPIO_PULL_NO);
+
+  /**/
   LL_GPIO_SetPinPull(USER_Btn_GPIO_Port, USER_Btn_Pin, LL_GPIO_PULL_NO);
 
   /**/
@@ -1380,6 +1519,9 @@ static void MX_GPIO_Init(void)
 
   /**/
   LL_GPIO_SetPinMode(DI_CountImpuls3_GPIO_Port, DI_CountImpuls3_Pin, LL_GPIO_MODE_INPUT);
+
+  /**/
+  LL_GPIO_SetPinMode(GPIOE, LL_GPIO_PIN_3, LL_GPIO_MODE_INPUT);
 
   /**/
   LL_GPIO_SetPinMode(USER_Btn_GPIO_Port, USER_Btn_Pin, LL_GPIO_MODE_INPUT);
