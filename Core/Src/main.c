@@ -209,7 +209,7 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_USART3_UART_Init();
-  MX_USB_OTG_FS_PCD_Init();
+//  MX_USB_OTG_FS_PCD_Init();
   MX_LWIP_Init();
   MX_CAN1_Init();
   MX_CRC_Init();
@@ -325,6 +325,7 @@ int main(void)
 
       HAL_Delay(100);
       Block_RTC_Init();
+      HAL_Delay(100);
 
       /* Читаем текущие данные при старте (блокирующий режим) */
           Block_RTC_ReadDateTime_Blocking(&SystemTime);
